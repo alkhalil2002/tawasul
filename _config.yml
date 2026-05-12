@@ -1,2 +1,4 @@
 include:
-  .well-known
+  - .well-known
+
+permalink: pretty
