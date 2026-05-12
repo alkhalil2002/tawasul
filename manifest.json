@@ -2,7 +2,7 @@
   "name": "تواصل",
   "short_name": "تواصل",
   "description": "منصة التواصل الداخلي",
-  "start_url": "/",
+  "start_url": "/tawasul/"
   "display": "standalone",
   "background_color": "#075E54",
   "theme_color": "#075E54",
