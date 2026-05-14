@@ -450,6 +450,9 @@ textarea.fi{resize:none;font-family:inherit;}
           <button id="hr-btn" onclick="openGroupHours()" style="display:none;" title="اوقات عمل المجموعة">
             <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.85)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/><path d="M18.5 18.5l1.5 1.5"/></svg>
           </button>
+          <button id="del-chat-btn" onclick="deleteCurrentChat()" style="display:none;" title="حذف المحادثة">
+            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.85)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+          </button>
 
         </div>
       </div>
@@ -1106,14 +1109,12 @@ function renderChatList(filter){
       const t=lastMsgTime[u.id]||'';
       const uc=unreadCount[u.id]||0;
       const ucHtml=uc>0?`<span class="unread-badge">${uc>99?'99+':uc}</span>`:'';
-      const canDelDM=(me.role==='admin');
       return`<div class="ci" onclick="openDM('${u.id}')" id="ci-${u.id}">
         ${avE(u,46)}
         <div class="cin">
           <div class="cit"><span class="cnm">${u.name} <span class="badge ${RB[u.role]}">${RS[u.role]}</span></span><span class="ctm">${t}</span></div>
           <div class="cpv-row"><div class="cpv">${preview}</div>${ucHtml}</div>
         </div>
-        ${canDelDM?`<button class="del-chat-btn" onclick="event.stopPropagation();deleteConversation('${u.id}')" title="حذف المحادثة"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#dc3545" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/></svg></button>`:''}
       </div>`;
     } else {
       const g=item.group;
@@ -1122,14 +1123,12 @@ function renderChatList(filter){
       const t=lastMsgTime[g.id]||'';
       const uc=unreadCount[g.id]||0;
       const ucHtml=uc>0?`<span class="unread-badge">${uc>99?'99+':uc}</span>`:'';
-      const canDelG=(me.role==='admin');
       return`<div class="ci" onclick="openG('${g.id}')" id="cig-${g.id}">
         ${gAv(46)}
         <div class="cin">
           <div class="cit"><span class="cnm">${g.name}${lk?` <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#856404" stroke-width="2" stroke-linecap="round" style="display:inline-block;vertical-align:middle;"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>`:''}</span><span class="ctm">${t}</span></div>
           <div class="cpv-row"><div class="cpv">${preview}</div>${ucHtml}</div>
         </div>
-        ${canDelG?`<button class="del-chat-btn" onclick="event.stopPropagation();deleteGroup('${g.id}')" title="حذف المجموعة"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#dc3545" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/></svg></button>`:''}
       </div>`;
     }
   }).join(''):`<div style="text-align:center;padding:40px;font-size:13px;color:var(--t3);">لا توجد محادثات</div>`;
@@ -1162,6 +1161,9 @@ async function openDM(uid){
   // في المحادثات الخاصة الجميع يقدر يرفع ملفات
   const ab=document.getElementById('msg-attach-btn');
   if(ab) ab.style.display='flex';
+  // زر الحذف للمدير فقط
+  const dbtn=document.getElementById('del-chat-btn');
+  if(dbtn) dbtn.style.display=(me && me.role==='admin')?'flex':'none';
   const u=allUsers.find(x=>x.id===uid);
   document.querySelectorAll('.ci').forEach(x=>x.classList.remove('sel'));
   const ci=document.getElementById('ci-'+uid);if(ci)ci.classList.add('sel');
@@ -1189,6 +1191,9 @@ async function openG(gid){
   // داخل المجموعة: العميل لا يستطيع رفع ملفات
   const ab=document.getElementById('msg-attach-btn');
   if(ab) ab.style.display=(me && me.role==='client')?'none':'flex';
+  // زر الحذف للمدير فقط
+  const dbtn=document.getElementById('del-chat-btn');
+  if(dbtn) dbtn.style.display=(me && me.role==='admin')?'flex':'none';
   const g=allGroups.find(x=>x.id===gid);
   document.querySelectorAll('.ci').forEach(x=>x.classList.remove('sel'));
   const ci=document.getElementById('cig-'+gid);if(ci)ci.classList.add('sel');
@@ -1950,6 +1955,17 @@ function sendNotif(title, body, icon){
 // ==============================
 // DELETE GROUP / CONVERSATION
 // ==============================
+// حذف المحادثة الحالية (من زر داخل رأس المحادثة)
+async function deleteCurrentChat(){
+  if(!me || me.role !== 'admin'){showToast('غير مصرح');return;}
+  if(!curChat)return;
+  if(ct==='group'){
+    await deleteGroup(curChat);
+  } else {
+    await deleteConversation(curChat);
+  }
+}
+
 async function deleteGroup(gid){
   if(!confirm('هل تريد حذف هذه المجموعة نهائياً؟ سيتم حذف جميع الرسائل والملفات.'))return;
   try{
