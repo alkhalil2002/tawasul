@@ -30,6 +30,7 @@ svg{display:inline-block;vertical-align:middle;flex-shrink:0;}
 .llogoc{width:68px;height:68px;border-radius:50%;background:var(--green);display:inline-flex;align-items:center;justify-content:center;margin-bottom:8px;}
 .ltitle{font-size:20px;font-weight:700;color:var(--t);text-align:center;}.lsub{font-size:13px;color:var(--t2);text-align:center;}
 .lrow{display:flex;gap:6px;}
+.lhint{font-size:11px;color:var(--t3);text-align:center;margin-bottom:-2px;}
 .ltype{flex:1;padding:10px;border:1.5px solid var(--bd);border-radius:10px;font-size:14px;cursor:pointer;text-align:center;background:#fff;color:var(--t);transition:all .15s;font-weight:500;}
 .ltype.sel{background:var(--green);color:#fff;border-color:var(--green);}
 .field{display:flex;flex-direction:column;gap:4px;}
@@ -64,7 +65,12 @@ svg{display:inline-block;vertical-align:middle;flex-shrink:0;}
 .cit{display:flex;align-items:center;justify-content:space-between;gap:4px;}
 .cnm{font-size:13px;font-weight:600;color:var(--t);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .ctm{font-size:10px;color:var(--t3);flex-shrink:0;}
-.cpv{font-size:12px;color:var(--t2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px;}
+.cpv{font-size:12px;color:var(--t2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px;flex:1;min-width:0;}
+.cpv-row{display:flex;align-items:center;justify-content:space-between;gap:6px;margin-top:2px;}
+.unread-badge{display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;padding:0 6px;border-radius:10px;background:#25D366;color:#fff;font-size:11px;font-weight:700;flex-shrink:0;line-height:1;box-shadow:0 1px 3px rgba(0,0,0,0.12);}
+.fab{position:absolute;bottom:24px;left:24px;width:56px;height:56px;border-radius:50%;background:#25D366;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 12px rgba(37,211,102,0.4);z-index:20;transition:transform 0.2s, box-shadow 0.2s;}
+.fab:hover{transform:scale(1.05);box-shadow:0 6px 16px rgba(37,211,102,0.5);}
+.fab:active{transform:scale(0.95);}
 .cex{font-size:10px;color:var(--green);margin-top:2px;}
 .unread-dot{width:9px;height:9px;border-radius:50%;background:#25D366;position:absolute;left:14px;top:50%;transform:translateY(-50%);}
 .badge{font-size:10px;padding:2px 7px;border-radius:10px;font-weight:600;}
@@ -201,6 +207,8 @@ textarea.fi{resize:none;font-family:inherit;}
     #sc-main{position:relative;height:100dvh;overflow:hidden;}
     #sc-admin{height:100dvh;overflow:hidden;display:none!important;flex-direction:column;}
     #sc-admin.active{display:flex!important;}
+    #sc-superadmin{height:100dvh;overflow:hidden;display:none!important;flex-direction:column;}
+    #sc-superadmin.active{display:flex!important;}
     #sc-login{display:none;}
     #sc-login.active{display:flex;}
     #sc-main{display:none;}
@@ -356,24 +364,35 @@ textarea.fi{resize:none;font-family:inherit;}
       </div>
       
     </div>
+    <div class="lhint">اختر طريقة الدخول</div>
     <div class="lrow">
-      <div class="ltype sel" onclick="setLT('staff',this)">موظف</div>
-      <div class="ltype" onclick="setLT('client',this)">عميل</div>
+      <div class="ltype sel" onclick="setLT('staff',this)" title="إذا كنت من فريق الشركة">موظف</div>
+      <div class="ltype" onclick="setLT('client',this)" title="إذا كنت عميلاً يتواصل مع الشركة">عميل</div>
+    </div>
+    <div id="codef" class="field">
+      <label>كود الشركة</label>
+      <input type="text" id="li-code" class="fi" placeholder="مثال: alkhalid" autocomplete="organization" onkeydown="if(event.key==='Enter')doLogin()" style="text-transform:lowercase;"/>
     </div>
     <div id="sf" class="field">
       <label>البريد الالكتروني</label>
-      <input type="email" id="li-email" class="fi" placeholder="example@company.com" onkeydown="if(event.key==='Enter')doLogin()"/>
+      <input type="email" id="li-email" class="fi" placeholder="example@company.com" autocomplete="username" onkeydown="if(event.key==='Enter')doLogin()"/>
     </div>
     <div id="cf" class="field" style="display:none;">
       <label>اسم المستخدم</label>
-      <input type="text" id="li-user" class="fi" placeholder="username" onkeydown="if(event.key==='Enter')doLogin()"/>
+      <input type="text" id="li-user" class="fi" placeholder="اسم المستخدم اللي أعطته لك الشركة" autocomplete="username" onkeydown="if(event.key==='Enter')doLogin()"/>
     </div>
     <div class="field">
       <label>كلمة السر</label>
-      <input type="password" id="li-pass" class="fi" placeholder="••••••••" onkeydown="if(event.key==='Enter')doLogin()"/>
+      <div style="position:relative;">
+        <input type="password" id="li-pass" class="fi" placeholder="••••••••" onkeydown="if(event.key==='Enter')doLogin()" style="padding-left:42px;"/>
+        <button type="button" onclick="togglePassVis('li-pass',this)" style="position:absolute;left:8px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;padding:6px;display:flex;align-items:center;justify-content:center;color:#888;" title="إظهار/إخفاء">
+          <svg id="li-pass-eye" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+        </button>
+      </div>
     </div>
     <div class="lerr" id="lerr">بيانات الدخول غير صحيحة</div>
     <button class="lbtn" id="lbtn" onclick="doLogin()">دخول</button>
+    <div style="text-align:center;margin-top:4px;"><a href="#" onclick="showForgotHint();return false;" style="font-size:12px;color:#075E54;text-decoration:none;">نسيت كلمة السر؟</a></div>
     <div class="lnote">رقم الجوال لا يظهر لاي طرف</div>
   </div>
 </div>
@@ -403,6 +422,9 @@ textarea.fi{resize:none;font-family:inherit;}
       </button>
     </div>
     <div class="clist" id="clist"></div>
+    <button class="fab" id="fab-btn" onclick="openNewGroup()" style="display:none;" title="مجموعة جديدة">
+      <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+    </button>
   </div>
 
   <div class="carea">
@@ -442,7 +464,7 @@ textarea.fi{resize:none;font-family:inherit;}
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
           </button>
           <input type="text" placeholder="اكتب رسالة..." id="msg-inp" onkeydown="if(event.key==='Enter')sendMsg()"/>
-          <button onclick="openUploadModal()" title="رفع ملف">
+          <button id="msg-attach-btn" onclick="openUploadModal()" title="رفع ملف">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#888" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
           </button>
         </div>
@@ -599,6 +621,17 @@ textarea.fi{resize:none;font-family:inherit;}
 
 </div>
 
+<!-- ================== SUPER ADMIN SCREEN ================== -->
+<div id="sc-superadmin" class="screen">
+  <div class="aphdr">
+    <span>إدارة الشركات</span>
+    <button onclick="doLogout()">
+      <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.85)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+    </button>
+  </div>
+  <div class="apbdy" id="sapbdy"></div>
+</div>
+
 <script>
 // ==============================
 // SUPABASE CONFIG
@@ -644,6 +677,8 @@ function connectRealtime(){
       const msg = JSON.parse(e.data);
       if(msg.event === 'INSERT' && msg.payload && msg.payload.record){
         const rec = msg.payload.record;
+        // تجاهل الرسائل التي لا تخص شركتنا
+        if(myCompanyId && rec.company_id && rec.company_id !== myCompanyId) return;
         if(curChat && (
           (ct==='dm' && ((rec.from_user===curChat && rec.to_user===me.id)||(rec.from_user===me.id && rec.to_user===curChat))) ||
           (ct==='group' && rec.group_id===curChat)
@@ -662,6 +697,13 @@ function connectRealtime(){
             sendNotif(title, body);
           }
         } else {
+          // رسالة في محادثة غير مفتوحة الآن → زيادة العداد
+          if(rec.from_user!==me?.id){
+            const chatId=rec.group_id||(rec.to_user===me?.id?rec.from_user:null);
+            if(chatId){
+              unreadCount[chatId]=(unreadCount[chatId]||0)+1;
+            }
+          }
           loadLastMessages();
           renderChatList();
         }
@@ -669,6 +711,7 @@ function connectRealtime(){
       // تحديث علامات الوصول والقراءة
       if(msg.event === 'UPDATE' && msg.payload && msg.payload.record){
         const rec = msg.payload.record;
+        if(myCompanyId && rec.company_id && rec.company_id !== myCompanyId) return;
         if(curChat && (
           (ct==='dm' && rec.from_user===me.id && rec.to_user===curChat) ||
           (ct==='group' && rec.group_id===curChat)
@@ -685,14 +728,22 @@ function connectRealtime(){
 // STATE
 // ==============================
 let me = null, curChat = null, ct = 'dm', lt = 'staff';
-let allUsers = [], allGroups = [], allTemplates = [], settings = {work_start:8, work_end:17, work_days:[0,1,2,3,4]};
-let msgTimeCache = {}, lastMsgPreview = {}, lastMsgTime = {};
+let myCompanyId = null;
+let allUsers = [], allGroups = [], allTemplates = [], allCompanies = [], settings = {work_start:8, work_end:17, work_days:[0,1,2,3,4]};
+let msgTimeCache = {}, lastMsgPreview = {}, lastMsgTime = {}, unreadCount = {};
 let selMembers = [], selTpl = null, cs = [], cfs = null, nts = [];
 let showFiles = false, msgCache = {};
 
-const RL={admin:'مدير النظام',supervisor:'مشرف',employee:'موظف',client:'عميل'};
-const RB={admin:'b-admin',supervisor:'b-supervisor',employee:'b-employee',client:'b-client'};
-const RS={admin:'مدير',supervisor:'مشرف',employee:'موظف',client:'عميل'};
+const RL={super_admin:'مدير عام',admin:'مدير النظام',supervisor:'مشرف',employee:'موظف',client:'عميل'};
+const RB={super_admin:'b-admin',admin:'b-admin',supervisor:'b-supervisor',employee:'b-employee',client:'b-client'};
+const RS={super_admin:'مدير عام',admin:'مدير',supervisor:'مشرف',employee:'موظف',client:'عميل'};
+
+// helper: append company_id filter to any sbGet query
+function _cq(extra){
+  if(!myCompanyId)return extra||'';
+  const f='company_id=eq.'+myCompanyId;
+  return extra?(extra+'&'+f):f;
+}
 
 // ==============================
 // UTILS
@@ -713,6 +764,20 @@ function fmtTime(ts){if(!ts)return'';const d=new Date(ts);const now=new Date();i
 function t2m(t){const[h,m]=t.split(':').map(Number);return h*60+m;}
 function showToast(msg,dur=3000){const t=document.getElementById('toast');t.textContent=msg;t.style.display='block';setTimeout(()=>t.style.display='none',dur);}
 function showLoader(v){document.getElementById('loader').style.display=v?'flex':'none';}
+
+function showForgotHint(){
+  alert('لاستعادة كلمة السر، تواصل مع:\n\n• إذا كنت موظفاً أو عميلاً: تواصل مع مدير شركتك\n• إذا كنت مدير شركة: تواصل مع المدير العام للنظام\n\nسيقوم بإعادة تعيين كلمة سر جديدة لك من لوحة التحكم.');
+}
+
+function togglePassVis(inputId, btn){
+  const inp = document.getElementById(inputId);
+  if(!inp) return;
+  const isPass = inp.type === 'password';
+  inp.type = isPass ? 'text' : 'password';
+  const eyeOpen = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>`;
+  const eyeClosed = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>`;
+  btn.innerHTML = isPass ? eyeClosed : eyeOpen;
+}
 
 function isLk(g){
   if(!g||me.role!=='client')return false;
@@ -740,31 +805,72 @@ function ghLabel(g){
 // BOOT
 // ==============================
 async function boot(){
-  showLoader(true);
-  const timeout = setTimeout(()=>{ showLoader(false); showSc('login'); }, 8000);
-  try {
+  // عرض شاشة الدخول فوراً — لا نجلب أي بيانات قبل أن يسجل المستخدم دخوله
+  showLoader(false);
+  // محاولة استرجاع جلسة سابقة من localStorage
+  try{
+    const saved=localStorage.getItem('tawasul_session');
+    if(saved){
+      const s=JSON.parse(saved);
+      if(s&&s.user_id&&s.company_id){
+        // تحقق سريع أن المستخدم لا يزال موجوداً
+        const u=await sbGet('users','id=eq.'+s.user_id+'&company_id=eq.'+s.company_id);
+        if(Array.isArray(u)&&u[0]){
+          me=u[0];
+          myCompanyId=me.company_id;
+          if(me.role==='super_admin'){
+            await loadSuperAdminData();
+            showSc('superadmin');
+            renderSuperAdmin();
+            return;
+          }
+          await loadCompanyData();
+          await rMain();
+          try{connectRealtime();}catch(e){}
+          markAsDelivered();
+          return;
+        }
+      }
+    }
+  }catch(e){console.warn('session restore failed',e);}
+  // تعبئة كود الشركة الأخير تلقائياً
+  try{
+    const lastCode=localStorage.getItem('tawasul_last_code');
+    if(lastCode){
+      const ci=document.getElementById('li-code');
+      if(ci) ci.value=lastCode;
+    }
+  }catch(e){}
+  showSc('login');
+}
+
+// جلب بيانات الشركة الكاملة (يستدعى بعد تسجيل الدخول فقط)
+async function loadCompanyData(){
+  try{
     const [u,g,t,s] = await Promise.all([
-      sbGet('users','order=created_at'),
-      sbGet('groups','order=created_at'),
-      sbGet('templates','order=created_at'),
+      sbGet('users',_cq('order=created_at')),
+      sbGet('groups',_cq('order=created_at')),
+      sbGet('templates',_cq('order=created_at')),
       sbGet('settings','id=eq.1')
     ]);
     if(Array.isArray(u)) allUsers=u;
     if(Array.isArray(g)) allGroups=g;
     if(Array.isArray(t)) allTemplates=t;
     if(s&&s[0]) settings=s[0];
-    for(let gr of allGroups){
+    // جلب أعضاء كل مجموعة بالتوازي
+    await Promise.all(allGroups.map(async gr=>{
       try{
         const mems=await sbGet('group_members',`group_id=eq.${gr.id}&select=user_id`);
         gr.members=Array.isArray(mems)?mems.map(m=>m.user_id):[];
       }catch(e){gr.members=[];}
-    }
-  } catch(e){ console.error('boot error:',e); }
-  clearTimeout(timeout);
-  showLoader(false);
-  showSc('login');
-  try{connectRealtime();}catch(e){}
-  await markAsDelivered();
+    }));
+    // تخزين cache للعرض الفوري في المرة القادمة
+    try{
+      localStorage.setItem('tawasul_cache_'+myCompanyId, JSON.stringify({
+        users:allUsers, groups:allGroups, templates:allTemplates, settings, ts:Date.now()
+      }));
+    }catch(e){}
+  }catch(e){console.error('loadCompanyData error:',e);}
 }
 
 // ==============================
@@ -795,10 +901,11 @@ function setLT(t,el){lt=t;document.querySelectorAll('.ltype').forEach(x=>x.class
 
 async function loadLastMessages(){
   try {
-    // جيب آخر رسالة لكل محادثة
-    const allMsgs = await sbGet('messages','order=created_at.desc&limit=200');
+    // جيب آخر 50 رسالة لكل محادثة (مفلترة بالشركة)
+    const allMsgs = await sbGet('messages',_cq('order=created_at.desc&limit=50'));
     if(!Array.isArray(allMsgs)) return;
     const seen = new Set();
+    unreadCount = {};
     allMsgs.forEach(m=>{
       const key = m.group_id || [m.from_user,m.to_user].sort().join('-');
       const chatId = m.group_id || (m.from_user===me?.id?m.to_user:m.from_user);
@@ -808,30 +915,124 @@ async function loadLastMessages(){
         lastMsgPreview[chatId] = m.text.length>35?m.text.substring(0,35)+'...':m.text;
         lastMsgTime[chatId] = fmtTime(m.created_at);
       }
+      // عد الرسائل غير المقروءة (الواردة لي بدون read_at)
+      if(me && m.from_user !== me.id && !m.read_at){
+        if(m.to_user === me.id){
+          unreadCount[m.from_user] = (unreadCount[m.from_user] || 0) + 1;
+        } else if(m.group_id){
+          unreadCount[m.group_id] = (unreadCount[m.group_id] || 0) + 1;
+        }
+      }
     });
   } catch(e){}
 }
 
 async function doLogin(){
   const btn=document.getElementById('lbtn');
-  btn.disabled=true;btn.textContent='جاري الدخول...';
-  document.getElementById('lerr').style.display='none';
+  const errEl=document.getElementById('lerr');
+  errEl.style.display='none';
   const pass=document.getElementById('li-pass').value.trim();
-  let u=null;
+  const code=document.getElementById('li-code').value.trim().toLowerCase();
+  // التحقق من الحقول قبل الإرسال
   if(lt==='staff'){
     const email=document.getElementById('li-email').value.trim();
-    u=allUsers.find(x=>x.email===email&&x.password===pass&&x.role!=='client');
+    if(!email){errEl.textContent='الرجاء إدخال البريد الإلكتروني';errEl.style.display='block';return;}
+    if(!pass){errEl.textContent='الرجاء إدخال كلمة السر';errEl.style.display='block';return;}
   } else {
     const uname=document.getElementById('li-user').value.trim();
-    u=allUsers.find(x=>x.username===uname&&x.password===pass&&x.role==='client');
+    if(!uname){errEl.textContent='الرجاء إدخال اسم المستخدم';errEl.style.display='block';return;}
+    if(!pass){errEl.textContent='الرجاء إدخال كلمة السر';errEl.style.display='block';return;}
   }
-  if(!u){document.getElementById('lerr').style.display='block';btn.disabled=false;btn.textContent='دخول';return;}
+  btn.disabled=true;btn.textContent='جاري الدخول...';
+  let u=null;
+  let networkErr=false;
+  try{
+    // المسار 1: لا يوجد كود → جرّب super_admin (موظفون فقط)
+    if(!code && lt==='staff'){
+      const email=document.getElementById('li-email').value.trim();
+      const res=await sbGet('users',`email=eq.${encodeURIComponent(email)}&password=eq.${encodeURIComponent(pass)}&role=eq.super_admin`);
+      if(Array.isArray(res)&&res[0]) u=res[0];
+      if(!u){
+        errEl.textContent='الرجاء إدخال كود الشركة';
+        errEl.style.display='block';
+        btn.disabled=false;btn.textContent='دخول';return;
+      }
+    }
+    // المسار 2: يوجد كود → نحدد الشركة ثم نبحث ضمنها فقط
+    else if(code){
+      const cos=await sbGet('companies',`slug=eq.${encodeURIComponent(code)}&is_active=eq.true`);
+      if(!Array.isArray(cos)||!cos[0]){
+        errEl.textContent='كود الشركة غير صحيح';
+        errEl.style.display='block';
+        btn.disabled=false;btn.textContent='دخول';return;
+      }
+      const cid=cos[0].id;
+      if(lt==='staff'){
+        const email=document.getElementById('li-email').value.trim();
+        const res=await sbGet('users',`company_id=eq.${cid}&email=eq.${encodeURIComponent(email)}&password=eq.${encodeURIComponent(pass)}&role=neq.client`);
+        if(Array.isArray(res)&&res[0]) u=res[0];
+      } else {
+        const uname=document.getElementById('li-user').value.trim();
+        const res=await sbGet('users',`company_id=eq.${cid}&username=eq.${encodeURIComponent(uname)}&password=eq.${encodeURIComponent(pass)}&role=eq.client`);
+        if(Array.isArray(res)&&res[0]) u=res[0];
+      }
+    } else {
+      // عميل بدون كود
+      errEl.textContent='الرجاء إدخال كود الشركة';
+      errEl.style.display='block';
+      btn.disabled=false;btn.textContent='دخول';return;
+    }
+  }catch(e){console.error('login error',e);networkErr=true;}
+  if(!u){
+    errEl.textContent=networkErr?'تعذّر الاتصال بالخادم، تأكد من الإنترنت':'البريد أو كلمة السر غير صحيحة';
+    errEl.style.display='block';
+    btn.disabled=false;btn.textContent='دخول';return;
+  }
   me=u;
+  myCompanyId=u.company_id;
+  // حفظ الجلسة + كود الشركة لتعبئته تلقائياً المرة القادمة
+  try{
+    localStorage.setItem('tawasul_session', JSON.stringify({user_id:u.id, company_id:u.company_id}));
+    if(code) localStorage.setItem('tawasul_last_code', code);
+  }catch(e){}
+  // عرض cache فوري إن وجد ثم تحديث في الخلفية
+  try{
+    const cached=localStorage.getItem('tawasul_cache_'+myCompanyId);
+    if(cached){
+      const c=JSON.parse(cached);
+      if(c.users)allUsers=c.users;
+      if(c.groups)allGroups=c.groups;
+      if(c.templates)allTemplates=c.templates;
+      if(c.settings)settings=c.settings;
+    }
+  }catch(e){}
+  // super_admin يفتح شاشة إدارة الشركات
+  if(u.role==='super_admin'){
+    btn.disabled=false;btn.textContent='دخول';
+    await loadSuperAdminData();
+    showSc('superadmin');
+    renderSuperAdmin();
+    return;
+  }
+  // باقي الأدوار: حمّل بيانات شركتهم
+  await loadCompanyData();
   btn.disabled=false;btn.textContent='دخول';
   await rMain();
+  try{connectRealtime();}catch(e){}
+  markAsDelivered();
 }
 
-async function doLogout(){me=null;curChat=null;showSc('login');}
+async function doLogout(){
+  me=null;curChat=null;myCompanyId=null;
+  try{localStorage.removeItem('tawasul_session');}catch(e){}
+  showSc('login');
+  // إعادة تعبئة آخر كود مستخدم
+  try{
+    const lastCode=localStorage.getItem('tawasul_last_code');
+    const ci=document.getElementById('li-code');
+    if(ci) ci.value=lastCode||'';
+  }catch(e){}
+}
 
 // ==============================
 // MAIN
@@ -847,6 +1048,7 @@ async function rMain(){
   const ca=me.role==='admin'||me.role==='supervisor';
   document.getElementById('adm-btn').style.display=ca?'flex':'none';
   document.getElementById('grp-btn').style.display=ca?'flex':'none';
+  document.getElementById('fab-btn').style.display=ca?'flex':'none';
   document.getElementById('stabs').innerHTML='';
   renderChatList();
   document.getElementById('noch').style.display='flex';
@@ -863,18 +1065,24 @@ function getVisibleUsers(){
 function getMyGroups(){if(me.role==='admin'||me.role==='supervisor')return allGroups;return allGroups.filter(g=>g.members&&g.members.includes(me.id));}
 
 function renderChatList(filter){
-  filter=filter||'';
+  filter=(filter||'').trim().toLowerCase();
   const items=[];
+  const matchUser=u=>{
+    if(!filter)return true;
+    return (u.name||'').toLowerCase().includes(filter)
+      || (u.email||'').toLowerCase().includes(filter)
+      || (u.username||'').toLowerCase().includes(filter);
+  };
+  const matchGroup=g=>!filter||(g.name||'').toLowerCase().includes(filter);
 
   // أضف المحادثات الفردية
-  getVisibleUsers().filter(u=>!filter||u.name.includes(filter)).forEach(u=>{
-    // نحاول نجيب آخر رسالة من الـ cache
+  getVisibleUsers().filter(matchUser).forEach(u=>{
     const lastTime=msgTimeCache[u.id]||0;
     items.push({type:'dm',id:u.id,user:u,lastTime});
   });
 
   // أضف المجموعات
-  getMyGroups().filter(g=>!filter||g.name.includes(filter)).forEach(g=>{
+  getMyGroups().filter(matchGroup).forEach(g=>{
     const lastTime=msgTimeCache[g.id]||0;
     items.push({type:'group',id:g.id,group:g,lastTime});
   });
@@ -887,12 +1095,14 @@ function renderChatList(filter){
       const u=item.user;
       const preview=lastMsgPreview[u.id]||'اضغط للمحادثة';
       const t=lastMsgTime[u.id]||'';
+      const uc=unreadCount[u.id]||0;
+      const ucHtml=uc>0?`<span class="unread-badge">${uc>99?'99+':uc}</span>`:'';
       const canDelDM=(me.role==='admin');
       return`<div class="ci" onclick="openDM('${u.id}')" id="ci-${u.id}">
         ${avE(u,46)}
         <div class="cin">
           <div class="cit"><span class="cnm">${u.name} <span class="badge ${RB[u.role]}">${RS[u.role]}</span></span><span class="ctm">${t}</span></div>
-          <div class="cpv">${preview}</div>
+          <div class="cpv-row"><div class="cpv">${preview}</div>${ucHtml}</div>
         </div>
         ${canDelDM?`<button class="del-chat-btn" onclick="event.stopPropagation();deleteConversation('${u.id}')" title="حذف المحادثة"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#dc3545" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/></svg></button>`:''}
       </div>`;
@@ -901,12 +1111,14 @@ function renderChatList(filter){
       const lk=isLk(g);
       const preview=lastMsgPreview[g.id]||'لا رسائل';
       const t=lastMsgTime[g.id]||'';
+      const uc=unreadCount[g.id]||0;
+      const ucHtml=uc>0?`<span class="unread-badge">${uc>99?'99+':uc}</span>`:'';
       const canDelG=(me.role==='admin');
       return`<div class="ci" onclick="openG('${g.id}')" id="cig-${g.id}">
         ${gAv(46)}
         <div class="cin">
           <div class="cit"><span class="cnm">${g.name}${lk?` <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#856404" stroke-width="2" stroke-linecap="round" style="display:inline-block;vertical-align:middle;"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>`:''}</span><span class="ctm">${t}</span></div>
-          <div class="cpv">${preview}</div>
+          <div class="cpv-row"><div class="cpv">${preview}</div>${ucHtml}</div>
         </div>
         ${canDelG?`<button class="del-chat-btn" onclick="event.stopPropagation();deleteGroup('${g.id}')" title="حذف المجموعة"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#dc3545" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/></svg></button>`:''}
       </div>`;
@@ -914,8 +1126,9 @@ function renderChatList(filter){
   }).join(''):`<div style="text-align:center;padding:40px;font-size:13px;color:var(--t3);">لا توجد محادثات</div>`;
 }
 
-function renderGroupList(){
-  const gs=getMyGroups();
+function renderGroupList(filter){
+  filter=(filter||'').trim().toLowerCase();
+  const gs=getMyGroups().filter(g=>!filter||(g.name||'').toLowerCase().includes(filter));
   document.getElementById('clist').innerHTML=gs.length?gs.map(g=>{
     const lk=isLk(g);
     return`<div class="ci" onclick="openG('${g.id}')" id="cig-${g.id}">
@@ -929,13 +1142,17 @@ function renderGroupList(){
   }).join(''):`<div style="text-align:center;padding:40px;font-size:13px;color:var(--t3);">لا توجد مجموعات</div>`;
 }
 
-function filterChats(v){const t=document.querySelector('.stab.active');t&&t.textContent==='المجموعات'?renderGroupList():renderChatList(v);}
+function filterChats(v){const t=document.querySelector('.stab.active');t&&t.textContent==='المجموعات'?renderGroupList(v):renderChatList(v);}
 
 // ==============================
 // OPEN CHAT
 // ==============================
 async function openDM(uid){
   curChat=uid;ct='dm';showFiles=false;
+  unreadCount[uid]=0;
+  // في المحادثات الخاصة الجميع يقدر يرفع ملفات
+  const ab=document.getElementById('msg-attach-btn');
+  if(ab) ab.style.display='flex';
   const u=allUsers.find(x=>x.id===uid);
   document.querySelectorAll('.ci').forEach(x=>x.classList.remove('sel'));
   const ci=document.getElementById('ci-'+uid);if(ci)ci.classList.add('sel');
@@ -959,6 +1176,10 @@ async function openDM(uid){
 
 async function openG(gid){
   curChat=gid;ct='group';showFiles=false;
+  unreadCount[gid]=0;
+  // داخل المجموعة: العميل لا يستطيع رفع ملفات
+  const ab=document.getElementById('msg-attach-btn');
+  if(ab) ab.style.display=(me && me.role==='client')?'none':'flex';
   const g=allGroups.find(x=>x.id===gid);
   document.querySelectorAll('.ci').forEach(x=>x.classList.remove('sel'));
   const ci=document.getElementById('cig-'+gid);if(ci)ci.classList.add('sel');
@@ -1000,15 +1221,13 @@ async function markAsRead(){
   if(!curChat||!me)return;
   try{
     if(ct==='dm'){
-      // نضع read_at للرسائل الواردة من الطرف الثاني
       await sbPatch('messages',
-        `to_user=eq.${me.id}&from_user=eq.${curChat}&read_at=is.null`,
+        _cq(`to_user=eq.${me.id}&from_user=eq.${curChat}&read_at=is.null`),
         {read_at:new Date().toISOString()}
       );
     } else {
-      // في المجموعة نضع read_at للرسائل الواردة
       await sbPatch('messages',
-        `group_id=eq.${curChat}&read_at=is.null&from_user=neq.${me.id}`,
+        _cq(`group_id=eq.${curChat}&read_at=is.null&from_user=neq.${me.id}`),
         {read_at:new Date().toISOString()}
       );
     }
@@ -1018,9 +1237,8 @@ async function markAsRead(){
 async function markAsDelivered(){
   if(!me)return;
   try{
-    // كل الرسائل الواردة لهذا المستخدم تصبح delivered
     await sbPatch('messages',
-      `to_user=eq.${me.id}&delivered=eq.false`,
+      _cq(`to_user=eq.${me.id}&delivered=eq.false`),
       {delivered:true}
     );
   }catch(e){}
@@ -1032,9 +1250,9 @@ async function loadMessages(){
   let ms=[];
   try {
     if(ct==='dm'){
-      ms = await sbGet('messages',`or=(and(from_user.eq.${me.id},to_user.eq.${curChat}),and(from_user.eq.${curChat},to_user.eq.${me.id}))&order=created_at.asc`);
+      ms = await sbGet('messages',_cq(`or=(and(from_user.eq.${me.id},to_user.eq.${curChat}),and(from_user.eq.${curChat},to_user.eq.${me.id}))&order=created_at.asc`));
     } else {
-      ms = await sbGet('messages',`group_id=eq.${curChat}&order=created_at.asc`);
+      ms = await sbGet('messages',_cq(`group_id=eq.${curChat}&order=created_at.asc`));
     }
   } catch(e){ ms=[]; }
   renderMessages(ms);
@@ -1078,7 +1296,7 @@ async function sendMsg(){
   const text=inp.value.trim();
   if(!text||!curChat)return;
   inp.value='';
-  const data={from_user:me.id, text, type:'text', delivered:false, read_at:null, file_url:null, file_name:null};
+  const data={from_user:me.id, company_id:myCompanyId, text, type:'text', delivered:false, read_at:null, file_url:null, file_name:null};
   if(ct==='dm') data.to_user=curChat;
   else data.group_id=curChat;
   try {
@@ -1102,25 +1320,37 @@ async function loadFiles(){
   const g=allGroups.find(x=>x.id===curChat);if(!g||!g.sections)return;
   if(!cfs||!g.sections.includes(cfs))cfs=g.sections[0];
   document.getElementById('ftabs').innerHTML=g.sections.map(s=>`<div class="ftab ${s===cfs?'active':''}" onclick="swFS('${s}')">${s}</div>`).join('');
-  const files = await sbGet('group_files',`group_id=eq.${curChat}&section=eq.${encodeURIComponent(cfs)}&order=created_at.asc`);
+  const files = await sbGet('group_files',_cq(`group_id=eq.${curChat}&section=eq.${encodeURIComponent(cfs)}&order=created_at.asc`));
   renderFiles(files,g);
 }
 
 function renderFiles(files,g){
   const dT=`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/></svg>`;
+  const canUploadFiles = me && me.role !== 'client';
+  const canDeleteFiles = me && (me.role === 'admin' || me.role === 'supervisor');
   document.getElementById('fbdy').innerHTML=
-    `<div class="upa" onclick="openUploadModal()"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg><div style="margin-top:4px;">رفع ملف في "${cfs}"</div></div>`+
-    (files&&files.length?files.map(f=>`<div class="fitem"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#075E54" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg><div class="finf"><div class="finn">${f.file_name}</div><div class="finm">${f.file_size||''} · ${fmtTime(f.created_at)}</div></div><div style="display:flex;gap:6px;">${f.file_url?`<a href="${f.file_url}" target="_blank" class="abt" download="${f.file_name}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg></a>`:''}${f.file_url?`<a href="${f.file_url}" target="_blank" class="abt" style="text-decoration:none;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg></a>`:''}<button class="abt d" onclick="delFile('${f.id}')">${dT}</button></div></div>`).join(''):`<div style="text-align:center;color:var(--t3);font-size:13px;padding:20px;">لا توجد ملفات في هذا القسم</div>`);
+    (canUploadFiles?`<div class="upa" onclick="openUploadModal()"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg><div style="margin-top:4px;">رفع ملف في "${cfs}"</div></div>`:'')+
+    (files&&files.length?files.map(f=>`<div class="fitem"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#075E54" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg><div class="finf"><div class="finn">${f.file_name}</div><div class="finm">${f.file_size||''} · ${fmtTime(f.created_at)}</div></div><div style="display:flex;gap:6px;">${f.file_url?`<a href="${f.file_url}" target="_blank" class="abt" download="${f.file_name}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg></a>`:''}${f.file_url?`<a href="${f.file_url}" target="_blank" class="abt" style="text-decoration:none;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg></a>`:''}${canDeleteFiles?`<button class="abt d" onclick="delFile('${f.id}')">${dT}</button>`:''}</div></div>`).join(''):`<div style="text-align:center;color:var(--t3);font-size:13px;padding:20px;">لا توجد ملفات في هذا القسم</div>`);
 }
 
 async function swFS(s){cfs=s;await loadFiles();}
 
 async function delFile(fid){
+  // العميل والموظف العادي لا يستطيعون حذف ملفات المجموعة
+  if(!me || (me.role !== 'admin' && me.role !== 'supervisor')){
+    showToast('حذف الملفات مخصص للمدير والمشرف فقط');
+    return;
+  }
   await sbDelete('group_files',`id=eq.${fid}`);
   await loadFiles();
 }
 
 function openUploadModal(){
+  // العميل لا يستطيع رفع ملفات داخل المجموعات
+  if(ct==='group' && me && me.role==='client'){
+    showToast('رفع الملفات مخصص للموظفين فقط');
+    return;
+  }
   if(ct==='group'){
     const g=allGroups.find(x=>x.id===curChat);if(!g)return;
     document.getElementById('upsec-row').style.display='flex';
@@ -1153,12 +1383,12 @@ async function doUpload(){
     const msgText=isImage?fileUrl:'[ملف] '+file.name+' ('+fileSize+')';
     if(ct==='group'){
       const sec=document.getElementById('upsec').value;
-      await sbPost('group_files',{group_id:curChat,section:sec,file_name:file.name,file_size:fileSize,file_url:fileUrl,uploaded_by:me.id});
-      await sbPost('messages',{from_user:me.id,group_id:curChat,text:msgText,type:msgType,file_name:file.name,file_url:fileUrl,delivered:false,read_at:null});
+      await sbPost('group_files',{company_id:myCompanyId,group_id:curChat,section:sec,file_name:file.name,file_size:fileSize,file_url:fileUrl,uploaded_by:me.id});
+      await sbPost('messages',{company_id:myCompanyId,from_user:me.id,group_id:curChat,text:msgText,type:msgType,file_name:file.name,file_url:fileUrl,delivered:false,read_at:null});
       document.getElementById('upmodal').classList.remove('open');
       if(showFiles)await loadFiles();else await loadMessages();
     } else {
-      await sbPost('messages',{from_user:me.id,to_user:curChat,text:msgText,type:msgType,file_name:file.name,file_url:fileUrl,delivered:false,read_at:null});
+      await sbPost('messages',{company_id:myCompanyId,from_user:me.id,to_user:curChat,text:msgText,type:msgType,file_name:file.name,file_url:fileUrl,delivered:false,read_at:null});
       document.getElementById('upmodal').classList.remove('open');
       await loadMessages();
     }
@@ -1258,13 +1488,13 @@ async function createG(){
   btn.disabled=true;btn.textContent='جاري الانشاء...';
   try {
     const members=[me.id,...selMembers];
-    const gr=await sbPost('groups',{name,template:selTpl,sections:secs,custom_hours_enabled:false,custom_hours_start:'08:00',custom_hours_end:'17:00',custom_hours_msg:'نحن خارج اوقات العمل',created_by:me.id});
+    const gr=await sbPost('groups',{company_id:myCompanyId,name,template:selTpl,sections:secs,custom_hours_enabled:false,custom_hours_start:'08:00',custom_hours_end:'17:00',custom_hours_msg:'نحن خارج اوقات العمل',created_by:me.id});
     if(gr&&gr[0]){
       const gid=gr[0].id;
-      for(const uid of members){await sbPost('group_members',{group_id:gid,user_id:uid});}
-      await sbPost('messages',{from_user:me.id,group_id:gid,text:'تم انشاء المجموعة',type:'text'});
+      for(const uid of members){await sbPost('group_members',{company_id:myCompanyId,group_id:gid,user_id:uid});}
+      await sbPost('messages',{company_id:myCompanyId,from_user:me.id,group_id:gid,text:'تم انشاء المجموعة',type:'text'});
       // reload groups
-      allGroups = await sbGet('groups','order=created_at');
+      allGroups = await sbGet('groups',_cq('order=created_at'));
       for(let g of allGroups){const mems=await sbGet('group_members',`group_id=eq.${g.id}&select=user_id`);g.members=mems.map(m=>m.user_id);}
       closeGM();
       const tab=document.querySelector('.stab.active');
@@ -1317,7 +1547,7 @@ function goAdmin(){
   `;
   apTab('staff',document.querySelector('.aptab'));
 }
-function goBack(){showSc('main');}
+function goBack(){showSc('main');renderChatList();}
 
 async function apTab(tab,el){
   document.querySelectorAll('.aptab').forEach(x=>x.classList.remove('active'));el.classList.add('active');
@@ -1343,7 +1573,9 @@ async function apTab(tab,el){
     </div>
     ${allUsers.filter(x=>x.role!=='client').map(u=>{
       const canDel = me.role==='admin' || (me.role==='supervisor' && u.role==='employee');
-      return`<div class="urow">${avE(u,38)}<div class="uri"><div class="urn">${u.name}</div><div class="urid">${u.email||'—'} · <span class="badge ${RB[u.role]}">${RS[u.role]}</span></div></div><div class="ura">${canDel?`<button class="abt d" onclick="dU('${u.id}','staff')">${dT}</button>`:''}</div></div>`;
+      const canResetPass = u.id !== me.id && (me.role==='admin' || (me.role==='supervisor' && u.role==='employee'));
+      const keyIcon = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>`;
+      return`<div class="urow">${avE(u,38)}<div class="uri"><div class="urn">${u.name}</div><div class="urid">${u.email||'—'} · <span class="badge ${RB[u.role]}">${RS[u.role]}</span></div></div><div class="ura">${canResetPass?`<button class="abt" onclick="resetUserPassword('${u.id}','staff')" title="إعادة تعيين كلمة السر">${keyIcon}</button>`:''}${canDel?`<button class="abt d" onclick="dU('${u.id}','staff')">${dT}</button>`:''}</div></div>`;
     }).join('')}`;
   } else if(tab==='clients'){
     b.innerHTML=`<div class="stitle">العملاء</div>
@@ -1354,7 +1586,10 @@ async function apTab(tab,el){
       <button class="fsub" onclick="aClient()">انشاء الحساب</button>
       <div class="crdb" id="ccb"></div>
     </div>
-    ${allUsers.filter(x=>x.role==='client').map(u=>`<div class="urow">${avE(u,38)}<div class="uri"><div class="urn">${u.name}</div><div class="urid">@${u.username||'—'}</div></div><div class="ura"><button class="abt" onclick="cpC('${u.username}','${u.password}')">${dC} نسخ</button><button class="abt d" onclick="dU('${u.id}','clients')">${dT}</button></div></div>`).join('')}`;
+    ${allUsers.filter(x=>x.role==='client').map(u=>{
+      const keyIcon = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>`;
+      return`<div class="urow">${avE(u,38)}<div class="uri"><div class="urn">${u.name}</div><div class="urid">@${u.username||'—'}</div></div><div class="ura"><button class="abt" onclick="cpC('${u.username}','${u.password}')">${dC} نسخ</button><button class="abt" onclick="resetUserPassword('${u.id}','clients')" title="إعادة تعيين كلمة السر">${keyIcon}</button><button class="abt d" onclick="dU('${u.id}','clients')">${dT}</button></div></div>`;
+    }).join('')}`;
   } else if(tab==='templates'){
     nts=[];
     b.innerHTML=`<div class="stitle">قوالب الملفات</div>
@@ -1459,7 +1694,7 @@ async function saveTpl(){
   const n=document.getElementById('tnn').value.trim();
   const ss=nts.filter(s=>s.trim());
   if(!n||!ss.length){alert('ادخل الاسم وقسما واحدا');return;}
-  const res=await sbPost('templates',{name:n,sections:ss});
+  const res=await sbPost('templates',{company_id:myCompanyId,name:n,sections:ss});
   if(res&&res[0])allTemplates.push(res[0]);
   apTab('templates',document.querySelector('.aptab.active'));
   showToast('تم حفظ القالب');
@@ -1475,7 +1710,7 @@ async function aStaff(){
   const n=document.getElementById('ns-n').value.trim(),r=document.getElementById('ns-r').value,e=document.getElementById('ns-e').value.trim(),p=document.getElementById('ns-p').value.trim();
   if(!n||!e||!p)return;
   const colors=['#25D366','#34B7F1','#FF8C00','#9B59B6'];
-  const res=await sbPost('users',{name:n,role:r,email:e,password:p,color:colors[Math.floor(Math.random()*colors.length)]});
+  const res=await sbPost('users',{company_id:myCompanyId,name:n,role:r,email:e,password:p,color:colors[Math.floor(Math.random()*colors.length)]});
   if(res&&res[0]){allUsers.push(res[0]);const b=document.getElementById('scb');b.style.display='block';b.innerHTML=`تم الانشاء<br>ايميل: <b>${e}</b> / كلمة السر: <b>${p}</b>`;}
   apTab('staff',document.querySelector('.aptab.active'));
 }
@@ -1484,7 +1719,7 @@ async function aClient(){
   const n=document.getElementById('nc-n').value.trim(),u=document.getElementById('nc-u').value.trim(),p=document.getElementById('nc-p').value.trim();
   if(!n||!u||!p)return;
   const colors=['#E74C3C','#9B59B6','#FF8C00'];
-  const res=await sbPost('users',{name:n,role:'client',username:u,password:p,color:colors[Math.floor(Math.random()*colors.length)]});
+  const res=await sbPost('users',{company_id:myCompanyId,name:n,role:'client',username:u,password:p,color:colors[Math.floor(Math.random()*colors.length)]});
   if(res&&res[0]){allUsers.push(res[0]);const b=document.getElementById('ccb');b.style.display='block';b.innerHTML=`تم الانشاء<br>يوزر: <b>${u}</b> / كلمة السر: <b>${p}</b>`;}
   apTab('clients',document.querySelector('.aptab.active'));
 }
@@ -1497,6 +1732,186 @@ async function dU(id,tab){
   apTab(tab,document.querySelector('.aptab.active'));
 }
 
+async function resetUserPassword(uid, tab){
+  const user=allUsers.find(x=>x.id===uid);
+  if(!user){showToast('المستخدم غير موجود');return;}
+  const newPass=prompt(`إعادة تعيين كلمة سر "${user.name}"\nأدخل كلمة السر الجديدة:`);
+  if(!newPass||newPass.trim().length<1){return;}
+  const p=newPass.trim();
+  try{
+    await sbPatch('users',`id=eq.${uid}`,{password:p});
+    user.password=p;
+    showToast('تم تغيير كلمة السر');
+    // عرض البيانات الجديدة في رسالة قابلة للنسخ
+    const ident = user.email || ('@'+user.username);
+    if(confirm(`تم تغيير كلمة السر ✓\n\nالبيانات الجديدة:\n${user.email?'الإيميل':'اسم المستخدم'}: ${user.email||user.username}\nكلمة السر: ${p}\n\nاضغط OK لنسخها`)){
+      if(navigator.clipboard){
+        navigator.clipboard.writeText(`${ident}\n${p}`);
+        showToast('تم النسخ');
+      }
+    }
+    if(tab) apTab(tab,document.querySelector('.aptab.active'));
+  }catch(e){showToast('فشل تغيير كلمة السر');}
+}
+
+
+// ==============================
+// SUPER ADMIN — إدارة الشركات
+// ==============================
+async function loadSuperAdminData(){
+  try{
+    const [cs, us] = await Promise.all([
+      sbGet('companies','order=created_at.desc'),
+      sbGet('users','role=eq.admin&order=created_at.desc')
+    ]);
+    allCompanies = Array.isArray(cs) ? cs : [];
+    allUsers = Array.isArray(us) ? us : [];
+  }catch(e){console.error('loadSuperAdminData',e);allCompanies=[];}
+}
+
+function renderSuperAdmin(){
+  const b = document.getElementById('sapbdy');
+  const dT = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/></svg>`;
+  const dI = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>`;
+  b.innerHTML = `
+    <div class="stitle">الشركات المسجلة (${allCompanies.length})</div>
+    <div style="margin-bottom:10px;">
+      <button class="abt" onclick="document.getElementById('newco').classList.toggle('open')">${dI} إضافة شركة جديدة</button>
+    </div>
+    <div class="addf" id="newco">
+      <div class="frow">
+        <input type="text" id="co-name" placeholder="اسم الشركة (مثال: شركة الخالد)"/>
+        <input type="text" id="co-slug" placeholder="معرّف الشركة بالإنجليزي (مثال: alkhalid)"/>
+      </div>
+      <div style="margin:6px 0 4px;font-size:12px;color:var(--t2);font-weight:600;">حساب مدير الشركة الأول:</div>
+      <div class="frow">
+        <input type="text" id="co-adm-n" placeholder="اسم المدير"/>
+        <input type="email" id="co-adm-e" placeholder="إيميل المدير"/>
+      </div>
+      <div class="frow">
+        <input type="password" id="co-adm-p" placeholder="كلمة سر المدير"/>
+      </div>
+      <button class="fsub" onclick="createCompany()">إنشاء الشركة + مدير</button>
+      <div class="crdb" id="cocb"></div>
+    </div>
+    ${allCompanies.map(c => {
+      const admins = allUsers.filter(u => u.company_id === c.id);
+      const adminName = admins[0] ? admins[0].name : '—';
+      const adminEmail = admins[0] ? admins[0].email : '—';
+      return `<div class="urow" style="flex-direction:column;align-items:flex-start;gap:6px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;width:100%;">
+          <div>
+            <div class="urn">${c.name}</div>
+            <div class="urid">كود الشركة: <b style="color:#075E54;cursor:pointer;" onclick="copyCompanyCode('${c.slug}')" title="نسخ الكود">${c.slug}</b> · مدير: ${adminName} (${adminEmail})</div>
+          </div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;">
+            <button class="abt" onclick="copyCompanyCode('${c.slug}')" title="نسخ الكود"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> نسخ</button>
+            ${admins[0] ? `<button class="abt" onclick="resetCompanyAdminPassword('${admins[0].id}','${admins[0].email||''}')" title="تغيير كلمة سر المدير"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg> تغيير كلمة السر</button>` : ''}
+            <button class="abt" onclick="toggleCompanyActive('${c.id}',${!c.is_active})">${c.is_active ? 'تعطيل' : 'تفعيل'}</button>
+            <button class="abt d" onclick="deleteCompany('${c.id}')">${dT}</button>
+          </div>
+        </div>
+        ${!c.is_active ? '<div style="font-size:11px;color:#c00;">شركة معطلة</div>' : ''}
+      </div>`;
+    }).join('') || '<div style="text-align:center;color:var(--t3);font-size:13px;padding:20px;">لا توجد شركات بعد</div>'}
+  `;
+}
+
+async function createCompany(){
+  const name = document.getElementById('co-name').value.trim();
+  const slug = document.getElementById('co-slug').value.trim().toLowerCase().replace(/[^a-z0-9-]/g,'');
+  const adminName = document.getElementById('co-adm-n').value.trim();
+  const adminEmail = document.getElementById('co-adm-e').value.trim();
+  const adminPass = document.getElementById('co-adm-p').value.trim();
+  if(!name||!slug||!adminName||!adminEmail||!adminPass){
+    document.getElementById('cocb').style.display='block';
+    document.getElementById('cocb').textContent = 'كل الحقول مطلوبة';
+    return;
+  }
+  try{
+    const co = await sbPost('companies', {name, slug, is_active:true});
+    if(!co || !co[0]) throw new Error('فشل إنشاء الشركة');
+    const cid = co[0].id;
+    const adm = await sbPost('users', {
+      company_id:cid, name:adminName, role:'admin',
+      email:adminEmail, password:adminPass, color:'#075E54'
+    });
+    if(!adm || !adm[0]) throw new Error('فشل إنشاء المدير');
+    // قالب افتراضي للشركة
+    await sbPost('templates', {company_id:cid, name:'قالب مخصص', sections:['عام']});
+    document.getElementById('cocb').style.display='block';
+    document.getElementById('cocb').innerHTML = `تم إنشاء الشركة بنجاح ✓<br>
+      <div style="margin-top:6px;padding:8px;background:#fff;border-radius:6px;border:1px solid #ddd;font-size:13px;line-height:1.7;">
+        كود الشركة: <b style="color:#075E54;font-size:15px;">${slug}</b><br>
+        إيميل المدير: <b>${adminEmail}</b><br>
+        كلمة السر: <b>${adminPass}</b>
+      </div>
+      <div style="margin-top:6px;font-size:11px;color:#666;">⚠️ المدير يحتاج هذه البيانات للدخول — انسخها وأرسلها له</div>`;
+    document.getElementById('co-name').value='';
+    document.getElementById('co-slug').value='';
+    document.getElementById('co-adm-n').value='';
+    document.getElementById('co-adm-e').value='';
+    document.getElementById('co-adm-p').value='';
+    await loadSuperAdminData();
+    renderSuperAdmin();
+    showToast('تم إنشاء الشركة');
+  }catch(e){
+    console.error(e);
+    document.getElementById('cocb').style.display='block';
+    document.getElementById('cocb').textContent = 'فشل الإنشاء: ' + (e.message || 'تأكد أن المعرّف غير مستخدم');
+  }
+}
+
+function copyCompanyCode(slug){
+  if(navigator.clipboard){
+    navigator.clipboard.writeText(slug);
+    showToast('تم نسخ كود الشركة: '+slug);
+  } else {
+    showToast('كود الشركة: '+slug);
+  }
+}
+
+async function resetCompanyAdminPassword(adminId, adminEmail){
+  const newPass = prompt(`تغيير كلمة سر المدير\nالإيميل: ${adminEmail}\n\nأدخل كلمة السر الجديدة:`);
+  if(!newPass || !newPass.trim()) return;
+  const p = newPass.trim();
+  try{
+    await sbPatch('users', `id=eq.${adminId}`, {password: p});
+    const adm = allUsers.find(x=>x.id===adminId);
+    if(adm) adm.password = p;
+    if(confirm(`تم تغيير كلمة السر ✓\n\nالبيانات الجديدة:\nالإيميل: ${adminEmail}\nكلمة السر: ${p}\n\nاضغط OK لنسخها`)){
+      if(navigator.clipboard){
+        navigator.clipboard.writeText(`${adminEmail}\n${p}`);
+        showToast('تم النسخ');
+      }
+    }
+    renderSuperAdmin();
+  }catch(e){showToast('فشل تغيير كلمة السر');}
+}
+
+async function toggleCompanyActive(cid, active){
+  await sbPatch('companies', 'id=eq.'+cid, {is_active:active});
+  const c = allCompanies.find(x=>x.id===cid);
+  if(c) c.is_active = active;
+  renderSuperAdmin();
+}
+
+async function deleteCompany(cid){
+  if(!confirm('سيتم حذف الشركة وكل بياناتها (مستخدمين، مجموعات، رسائل، ملفات) نهائياً. متأكد؟'))return;
+  try{
+    // الحذف التتابعي (CASCADE في DB لكن نتأكد)
+    await sbDelete('messages','company_id=eq.'+cid);
+    await sbDelete('group_files','company_id=eq.'+cid);
+    await sbDelete('group_members','company_id=eq.'+cid);
+    await sbDelete('groups','company_id=eq.'+cid);
+    await sbDelete('templates','company_id=eq.'+cid);
+    await sbDelete('users','company_id=eq.'+cid);
+    await sbDelete('companies','id=eq.'+cid);
+    await loadSuperAdminData();
+    renderSuperAdmin();
+    showToast('تم حذف الشركة');
+  }catch(e){showToast('فشل الحذف');}
+}
 
 // ==============================
 // NOTIFICATIONS
@@ -1538,7 +1953,7 @@ async function deleteGroup(gid){
 async function deleteConversation(uid){
   if(!confirm('هل تريد حذف هذه المحادثة نهائياً؟'))return;
   try{
-    await sbDelete('messages','or=(and(from_user.eq.'+me.id+',to_user.eq.'+uid+'),and(from_user.eq.'+uid+',to_user.eq.'+me.id+'))');
+    await sbDelete('messages',_cq('or=(and(from_user.eq.'+me.id+',to_user.eq.'+uid+'),and(from_user.eq.'+uid+',to_user.eq.'+me.id+'))'));
     if(curChat===uid){curChat=null;ct='dm';document.getElementById('noch').style.display='flex';document.getElementById('achat').style.display='none';if(isMobile())goBackToList();}
     delete msgTimeCache[uid];delete lastMsgPreview[uid];delete lastMsgTime[uid];
     renderChatList();
