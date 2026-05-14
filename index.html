@@ -248,7 +248,7 @@ textarea.fi{resize:none;font-family:inherit;}
     .noch p{font-size:16px;}
 
     /* CHAT HEADER */
-    .chhdr{padding:0 12px;padding-top:max(54px,calc(env(safe-area-inset-top)+10px));padding-bottom:12px;min-height:90px;flex-shrink:0;}
+    .chhdr{padding:0 12px;padding-top:max(54px,calc(env(safe-area-inset-top)+10px));padding-bottom:12px;min-height:90px;flex-shrink:0;position:sticky;top:0;z-index:5;}
     .chn{font-size:17px;font-weight:600;}
     .chs{font-size:13px;}
     .chic{gap:18px;}
@@ -881,17 +881,24 @@ function isMobile(){return window.innerWidth<=768;}
 function goBackToList(){
   if(!isMobile())return;
   document.getElementById('sbar-el').classList.remove('hidden');
-  document.getElementById('achat').classList.remove('mobile-active');
+  const achat = document.getElementById('achat');
+  achat.classList.remove('mobile-active');
+  achat.style.height = ''; // إعادة الحجم للوضع الافتراضي
   document.getElementById('noch').style.display='flex';
 }
 
 function showChat(){
   if(!isMobile())return;
   document.getElementById('sbar-el').classList.add('hidden');
-  document.getElementById('achat').classList.add('mobile-active');
+  const achat = document.getElementById('achat');
+  achat.classList.add('mobile-active');
   document.getElementById('noch').style.display='none';
   // أظهر زر الرجوع
   document.querySelector('.back-btn').style.display='flex';
+  // ضبط حجم نافذة المحادثة لتطابق المساحة الظاهرة (يثبت الرأس فوق)
+  if(window.visualViewport){
+    achat.style.height = window.visualViewport.height + 'px';
+  }
 }
 
 // ==============================
@@ -1960,6 +1967,33 @@ async function deleteConversation(uid){
     showToast('تم حذف المحادثة');
   }catch(e){showToast('فشل الحذف');}
 }
+// ==============================
+// iOS KEYBOARD FIX
+// ==============================
+// عند ظهور الكيبورد في iOS، نضبط حجم نافذة المحادثة لتطابق المساحة الظاهرة
+// عشان الرأس يبقى فوق ثابت ولا يطلع خارج الشاشة
+(function setupViewportFix(){
+  if(!window.visualViewport) return;
+  const vv = window.visualViewport;
+  function adjustChatHeight(){
+    if(window.innerWidth > 768) return; // فقط على الموبايل
+    const achat = document.getElementById('achat');
+    if(!achat) return;
+    if(achat.classList.contains('mobile-active')){
+      achat.style.height = vv.height + 'px';
+      // ابقي الرسائل في الأسفل دائماً
+      const msgs = document.getElementById('msgs');
+      if(msgs) msgs.scrollTop = msgs.scrollHeight;
+    } else {
+      achat.style.height = '';
+    }
+  }
+  vv.addEventListener('resize', adjustChatHeight);
+  vv.addEventListener('scroll', adjustChatHeight);
+  // ضبط أولي عند تحميل الصفحة
+  setTimeout(adjustChatHeight, 100);
+})();
+
 // ==============================
 // START
 // ==============================
