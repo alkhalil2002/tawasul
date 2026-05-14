@@ -881,24 +881,17 @@ function isMobile(){return window.innerWidth<=768;}
 function goBackToList(){
   if(!isMobile())return;
   document.getElementById('sbar-el').classList.remove('hidden');
-  const achat = document.getElementById('achat');
-  achat.classList.remove('mobile-active');
-  achat.style.height = ''; // إعادة الحجم للوضع الافتراضي
+  document.getElementById('achat').classList.remove('mobile-active');
   document.getElementById('noch').style.display='flex';
 }
 
 function showChat(){
   if(!isMobile())return;
   document.getElementById('sbar-el').classList.add('hidden');
-  const achat = document.getElementById('achat');
-  achat.classList.add('mobile-active');
+  document.getElementById('achat').classList.add('mobile-active');
   document.getElementById('noch').style.display='none';
   // أظهر زر الرجوع
   document.querySelector('.back-btn').style.display='flex';
-  // ضبط حجم نافذة المحادثة لتطابق المساحة الظاهرة (يثبت الرأس فوق)
-  if(window.visualViewport){
-    achat.style.height = window.visualViewport.height + 'px';
-  }
 }
 
 // ==============================
@@ -1967,33 +1960,6 @@ async function deleteConversation(uid){
     showToast('تم حذف المحادثة');
   }catch(e){showToast('فشل الحذف');}
 }
-// ==============================
-// iOS KEYBOARD FIX
-// ==============================
-// عند ظهور الكيبورد في iOS، نضبط حجم نافذة المحادثة لتطابق المساحة الظاهرة
-// عشان الرأس يبقى فوق ثابت ولا يطلع خارج الشاشة
-(function setupViewportFix(){
-  if(!window.visualViewport) return;
-  const vv = window.visualViewport;
-  function adjustChatHeight(){
-    if(window.innerWidth > 768) return; // فقط على الموبايل
-    const achat = document.getElementById('achat');
-    if(!achat) return;
-    if(achat.classList.contains('mobile-active')){
-      achat.style.height = vv.height + 'px';
-      // ابقي الرسائل في الأسفل دائماً
-      const msgs = document.getElementById('msgs');
-      if(msgs) msgs.scrollTop = msgs.scrollHeight;
-    } else {
-      achat.style.height = '';
-    }
-  }
-  vv.addEventListener('resize', adjustChatHeight);
-  vv.addEventListener('scroll', adjustChatHeight);
-  // ضبط أولي عند تحميل الصفحة
-  setTimeout(adjustChatHeight, 100);
-})();
-
 // ==============================
 // START
 // ==============================
