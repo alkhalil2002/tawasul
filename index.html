@@ -215,6 +215,9 @@ textarea.fi{resize:none;font-family:inherit;}
     #sc-main{display:none;}
     #sc-main.active{display:flex;}
 
+    /* استخدم top/left بدون inset:0 — يخلي JS يتحكم في الحجم بدقة */
+    #achat{position:fixed!important;top:0;left:0;width:100%;height:100dvh;}
+
     /* SIDEBAR */
     .sbar{position:fixed;inset:0;width:100%;z-index:60;background:#fff;transform:translateX(0);transition:transform .28s cubic-bezier(.4,0,.2,1);}
     .sbar.hidden{transform:translateX(105%);}
@@ -242,7 +245,7 @@ textarea.fi{resize:none;font-family:inherit;}
 
     /* AVATARS */
     .carea{width:100%;height:100dvh;}
-    #achat{display:none!important;width:100%;height:100dvh;overflow:hidden;position:fixed;inset:0;z-index:40;background:var(--gbg);}
+    #achat{display:none!important;width:100%;height:100dvh;overflow:hidden;position:fixed;top:0;left:0;z-index:40;background:var(--gbg);}
     #achat.mobile-active{display:flex!important;flex-direction:column;}
     .noch{height:100dvh;}
     .noch svg{width:80px;height:80px;}
@@ -882,7 +885,10 @@ function isMobile(){return window.innerWidth<=768;}
 function goBackToList(){
   if(!isMobile())return;
   document.getElementById('sbar-el').classList.remove('hidden');
-  document.getElementById('achat').classList.remove('mobile-active');
+  const achat = document.getElementById('achat');
+  achat.classList.remove('mobile-active');
+  // امسح أبعاد التعديل اليدوية
+  achat.style.top='';achat.style.left='';achat.style.width='';achat.style.height='';
   document.getElementById('noch').style.display='flex';
 }
 
@@ -893,6 +899,8 @@ function showChat(){
   document.getElementById('noch').style.display='none';
   // أظهر زر الرجوع
   document.querySelector('.back-btn').style.display='flex';
+  // اضبط أبعاد المحادثة لتطابق المساحة الظاهرة
+  requestAnimationFrame(adjustChatViewport);
 }
 
 // ==============================
@@ -1961,6 +1969,39 @@ async function deleteConversation(uid){
     showToast('تم حذف المحادثة');
   }catch(e){showToast('فشل الحذف');}
 }
+// ==============================
+// iOS KEYBOARD VIEWPORT FIX
+// ==============================
+// عند فتح الكيبورد، نضبط #achat ليطابق المساحة الظاهرة بالضبط
+// — الرأس فوق الشاشة الظاهرة، الكتابة تحت بالضبط فوق الكيبورد
+function adjustChatViewport(){
+  if(!window.visualViewport) return;
+  if(window.innerWidth > 768) return;
+  const achat = document.getElementById('achat');
+  if(!achat) return;
+  if(!achat.classList.contains('mobile-active')){
+    achat.style.top='';
+    achat.style.left='';
+    achat.style.width='';
+    achat.style.height='';
+    return;
+  }
+  const vv = window.visualViewport;
+  achat.style.top = vv.offsetTop + 'px';
+  achat.style.left = vv.offsetLeft + 'px';
+  achat.style.width = vv.width + 'px';
+  achat.style.height = vv.height + 'px';
+  // أبقي الرسائل عند آخر رسالة
+  const msgs = document.getElementById('msgs');
+  if(msgs && msgs.scrollHeight - msgs.scrollTop - msgs.clientHeight < 80){
+    msgs.scrollTop = msgs.scrollHeight;
+  }
+}
+if(window.visualViewport){
+  window.visualViewport.addEventListener('resize', adjustChatViewport);
+  window.visualViewport.addEventListener('scroll', adjustChatViewport);
+}
+
 // ==============================
 // START
 // ==============================
