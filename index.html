@@ -1305,13 +1305,18 @@ async function sendMsg(){
   const text=inp.value.trim();
   if(!text||!curChat)return;
   inp.value='';
+  // أبقي الكيبورد مفتوح — لا تفقد الـ focus
+  inp.focus();
   const data={from_user:me.id, company_id:myCompanyId, text, type:'text', delivered:false, read_at:null, file_url:null, file_name:null};
   if(ct==='dm') data.to_user=curChat;
   else data.group_id=curChat;
-  try {
-    await sbPost('messages',data);
-    await loadMessages();
-  } catch(e){ showToast('خطأ في الإرسال'); }
+  // أرسل في الخلفية بدون await — يحافظ على الـ focus
+  sbPost('messages',data).then(()=>{
+    loadMessages().then(()=>{
+      // تأكيد إضافي للحفاظ على focus بعد إعادة العرض
+      if(document.activeElement!==inp) inp.focus();
+    });
+  }).catch(()=>{ showToast('خطأ في الإرسال'); });
 }
 
 // ==============================
