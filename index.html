@@ -1061,6 +1061,10 @@ async function rMain(){
   document.getElementById('adm-btn').style.display=ca?'flex':'none';
   document.getElementById('grp-btn').style.display=ca?'flex':'none';
   document.getElementById('fab-btn').style.display=ca?'flex':'none';
+  // نسخ احتياطي تلقائي يومي (في الخلفية، لا يعطل التطبيق)
+  if(me.role==='admin'){
+    setTimeout(()=>{ autoBackupIfNeeded(); }, 3000);
+  }
   document.getElementById('stabs').innerHTML='';
   renderChatList();
   document.getElementById('noch').style.display='flex';
@@ -1563,6 +1567,7 @@ function goAdmin(){
     <div class="aptab" onclick="apTab('clients',this)">العملاء</div>
     <div class="aptab" onclick="apTab('templates',this)">قوالب الملفات</div>
     ${me.role==='admin'?'<div class="aptab" onclick="apTab(\'hours\',this)">أوقات الدوام</div>':''}
+    ${me.role==='admin'?'<div class="aptab" onclick="apTab(\'backups\',this)">النسخ الاحتياطي</div>':''}
   `;
   apTab('staff',document.querySelector('.aptab'));
 }
@@ -1627,6 +1632,44 @@ async function apTab(tab,el){
         </div>
         <div style="display:flex;flex-wrap:wrap;gap:5px;">${(t.sections||[]).map(s=>`<span style="background:var(--bg2);border:1px solid var(--bd);border-radius:12px;padding:3px 10px;font-size:11px;color:var(--t2);">${s}</span>`).join('')}</div>
       </div>`).join('')}`;
+  } else if(tab==='backups'){
+    // عرض مؤقت أثناء جلب القائمة
+    b.innerHTML = `<div class="stitle">النسخ الاحتياطي</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
+        <button class="fsub" style="flex:1;min-width:140px;" onclick="createAndRefreshBackup()">📦 إنشاء نسخة الآن</button>
+        <button class="abt" style="flex:1;min-width:140px;" onclick="downloadBackupNow()">⬇️ تحميل نسخة على الجهاز</button>
+      </div>
+      <div class="inote">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#666" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><circle cx="12" cy="12" r="9"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        يتم إنشاء نسخة احتياطية تلقائياً عند دخول المدير أول مرة في اليوم. النسخ تشمل: المستخدمين، المجموعات، الرسائل، القوالب، وبيانات الملفات (الملفات نفسها محفوظة في Storage).
+      </div>
+      <div class="stitle" style="margin-top:14px;">النسخ المحفوظة</div>
+      <div id="backups-list" style="font-size:13px;color:var(--t3);text-align:center;padding:14px;">جاري التحميل...</div>`;
+    // جلب القائمة بشكل غير متزامن
+    listBackups().then(items=>{
+      const lst = document.getElementById('backups-list');
+      if(!lst) return;
+      if(!items.length){
+        lst.innerHTML = `<div style="text-align:center;color:var(--t3);font-size:13px;padding:20px;">لا توجد نسخ بعد</div>`;
+        return;
+      }
+      lst.innerHTML = items.map(it=>{
+        const name = it.name;
+        const size = it.metadata && it.metadata.size ? (it.metadata.size/1024).toFixed(1)+' KB' : '';
+        const date = it.created_at ? new Date(it.created_at).toLocaleString('ar') : '';
+        return `<div class="urow">
+          <div class="uri">
+            <div class="urn">${name}</div>
+            <div class="urid">${date} · ${size}</div>
+          </div>
+          <div class="ura" style="display:flex;gap:6px;">
+            <button class="abt" onclick="downloadBackupFile('${name}')" title="تحميل">⬇️</button>
+            <button class="abt" onclick="restoreBackup('${name}')" title="استعادة">↩️</button>
+            <button class="abt d" onclick="deleteBackup('${name}')" title="حذف">🗑️</button>
+          </div>
+        </div>`;
+      }).join('');
+    });
   } else {
     const wd=settings.work_days||[0,1,2,3,4];
     const dayLabels=[{d:0,n:'الأحد'},{d:1,n:'الاثنين'},{d:2,n:'الثلاثاء'},{d:3,n:'الأربعاء'},{d:4,n:'الخميس'},{d:5,n:'الجمعة'},{d:6,n:'السبت'}];
@@ -1773,6 +1816,233 @@ async function resetUserPassword(uid, tab){
   }catch(e){showToast('فشل تغيير كلمة السر');}
 }
 
+
+// ==============================
+// BACKUP & RESTORE — النسخ الاحتياطي والاستعادة
+// ==============================
+
+// تجميع كل بيانات الشركة في كائن JSON واحد
+async function gatherBackupData(){
+  if(!myCompanyId)throw new Error('شركة غير معروفة');
+  const cq = 'company_id=eq.'+myCompanyId;
+  const [co, users, groups, gmembers, messages, templates, gfiles] = await Promise.all([
+    sbGet('companies','id=eq.'+myCompanyId),
+    sbGet('users', cq+'&order=created_at'),
+    sbGet('groups', cq+'&order=created_at'),
+    sbGet('group_members', cq),
+    sbGet('messages', cq+'&order=created_at'),
+    sbGet('templates', cq+'&order=created_at'),
+    sbGet('group_files', cq+'&order=created_at')
+  ]);
+  // نزيل كلمات السر من النسخة لحماية البيانات
+  const sanitizedUsers = (users||[]).map(u=>{const {password,...rest}=u;return rest;});
+  return {
+    version:'1.0',
+    company_id: myCompanyId,
+    created_at: new Date().toISOString(),
+    counts:{
+      users:(users||[]).length, groups:(groups||[]).length,
+      messages:(messages||[]).length, files:(gfiles||[]).length
+    },
+    data:{
+      company: (co||[])[0]||null,
+      users: sanitizedUsers,
+      groups: groups||[],
+      group_members: gmembers||[],
+      messages: messages||[],
+      templates: templates||[],
+      group_files: gfiles||[]
+    }
+  };
+}
+
+// رفع النسخة إلى Supabase Storage
+async function uploadBackup(backupData, filename){
+  const json = JSON.stringify(backupData);
+  const blob = new Blob([json], {type:'application/json'});
+  const path = myCompanyId + '/' + filename;
+  const res = await fetch(SUPA_URL+'/storage/v1/object/backups/'+path, {
+    method:'POST',
+    headers:{'apikey':SUPA_KEY,'Authorization':'Bearer '+SUPA_KEY,'Content-Type':'application/json','x-upsert':'true'},
+    body: blob
+  });
+  if(!res.ok){
+    const err = await res.text();
+    throw new Error('فشل رفع النسخة: '+err);
+  }
+  return path;
+}
+
+// إنشاء نسخة احتياطية (يدوي)
+async function createBackup(silent=false){
+  if(!me || me.role !== 'admin'){if(!silent)showToast('المدير فقط');return null;}
+  try{
+    if(!silent) showToast('جاري إنشاء النسخة...');
+    const data = await gatherBackupData();
+    const now = new Date();
+    const filename = now.toISOString().slice(0,10)+'_'+now.toISOString().slice(11,19).replace(/:/g,'-')+'.json';
+    await uploadBackup(data, filename);
+    if(!silent) showToast('تم إنشاء النسخة الاحتياطية ✓');
+    return {filename, data};
+  }catch(e){
+    console.error('backup error',e);
+    if(!silent) showToast('فشل إنشاء النسخة: '+(e.message||''));
+    return null;
+  }
+}
+
+// تحميل نسخة فورية على جهاز المدير
+async function downloadBackupNow(){
+  if(!me || me.role !== 'admin'){showToast('المدير فقط');return;}
+  try{
+    showToast('جاري تجهيز النسخة...');
+    const data = await gatherBackupData();
+    const json = JSON.stringify(data, null, 2);
+    const blob = new Blob([json], {type:'application/json'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'tawasul_backup_'+(new Date().toISOString().slice(0,10))+'.json';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showToast('تم التحميل ✓');
+  }catch(e){
+    showToast('فشل التحميل: '+(e.message||''));
+  }
+}
+
+// قائمة النسخ المحفوظة للشركة
+async function listBackups(){
+  try{
+    const res = await fetch(SUPA_URL+'/storage/v1/object/list/backups', {
+      method:'POST',
+      headers:{'apikey':SUPA_KEY,'Authorization':'Bearer '+SUPA_KEY,'Content-Type':'application/json'},
+      body: JSON.stringify({prefix:myCompanyId+'/', limit:100, sortBy:{column:'name',order:'desc'}})
+    });
+    if(!res.ok) return [];
+    const items = await res.json();
+    return Array.isArray(items) ? items : [];
+  }catch(e){console.error('listBackups',e);return [];}
+}
+
+// تحميل ملف نسخة من Storage إلى المستخدم
+async function downloadBackupFile(filename){
+  try{
+    const path = myCompanyId+'/'+filename;
+    const url = SUPA_URL+'/storage/v1/object/backups/'+path;
+    const res = await fetch(url, {headers:{'apikey':SUPA_KEY,'Authorization':'Bearer '+SUPA_KEY}});
+    if(!res.ok)throw new Error('فشل التحميل');
+    const blob = await res.blob();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(a.href);
+  }catch(e){showToast('فشل التحميل: '+(e.message||''));}
+}
+
+// حذف نسخة من Storage
+async function deleteBackup(filename){
+  if(!confirm('هل تريد حذف هذه النسخة نهائياً؟'))return;
+  try{
+    const path = myCompanyId+'/'+filename;
+    const res = await fetch(SUPA_URL+'/storage/v1/object/backups/'+path, {
+      method:'DELETE',
+      headers:{'apikey':SUPA_KEY,'Authorization':'Bearer '+SUPA_KEY}
+    });
+    if(!res.ok)throw new Error('فشل الحذف');
+    showToast('تم الحذف');
+    apTab('backups', document.querySelector('.aptab.active'));
+  }catch(e){showToast('فشل الحذف: '+(e.message||''));}
+}
+
+// استعادة من نسخة (إضافية — تضيف ما هو ناقص فقط)
+async function restoreBackup(filename){
+  if(!confirm('استعادة من '+filename+'\n\nسيتم إضافة البيانات الناقصة من النسخة (مستخدمين، مجموعات، رسائل، إلخ).\n\nالبيانات الموجودة حالياً لن تُحذف.\n\nمتابعة؟'))return;
+  try{
+    showToast('جاري الاستعادة...');
+    const path = myCompanyId+'/'+filename;
+    const res = await fetch(SUPA_URL+'/storage/v1/object/backups/'+path, {headers:{'apikey':SUPA_KEY,'Authorization':'Bearer '+SUPA_KEY}});
+    if(!res.ok)throw new Error('تعذّر قراءة النسخة');
+    const backup = await res.json();
+    if(!backup.data || backup.company_id !== myCompanyId)throw new Error('النسخة لا تخص هذه الشركة');
+
+    const stats = {users:0, groups:0, members:0, messages:0, templates:0, files:0};
+    // الاستعادة الإضافية — نتحقق من وجود كل سجل قبل الإضافة
+    async function restoreIfMissing(table, rows, statKey){
+      if(!rows || !rows.length) return;
+      // جلب الـ IDs الموجودة حالياً
+      const existing = await sbGet(table, 'company_id=eq.'+myCompanyId+'&select=id');
+      const existingIds = new Set((existing||[]).map(r=>r.id));
+      const toInsert = rows.filter(r => !existingIds.has(r.id));
+      if(toInsert.length){
+        // الـ users نضيف لها كلمة سر مؤقتة لأننا حذفناها من النسخة
+        if(table === 'users'){
+          toInsert.forEach(u => { if(!u.password) u.password = 'restore_'+Math.random().toString(36).slice(2,8); });
+        }
+        // إدراج على دفعات
+        const chunk = 50;
+        for(let i=0; i<toInsert.length; i+=chunk){
+          await sbPost(table, toInsert.slice(i, i+chunk));
+        }
+        stats[statKey] = toInsert.length;
+      }
+    }
+
+    await restoreIfMissing('users', backup.data.users, 'users');
+    await restoreIfMissing('templates', backup.data.templates, 'templates');
+    await restoreIfMissing('groups', backup.data.groups, 'groups');
+    await restoreIfMissing('group_members', backup.data.group_members, 'members');
+    await restoreIfMissing('messages', backup.data.messages, 'messages');
+    await restoreIfMissing('group_files', backup.data.group_files, 'files');
+
+    // إعادة تحميل البيانات
+    await loadCompanyData();
+    alert('تمت الاستعادة بنجاح ✓\n\n'+
+      'مستخدمين: '+stats.users+'\n'+
+      'قوالب: '+stats.templates+'\n'+
+      'مجموعات: '+stats.groups+'\n'+
+      'أعضاء: '+stats.members+'\n'+
+      'رسائل: '+stats.messages+'\n'+
+      'ملفات: '+stats.files+'\n\n'+
+      (stats.users>0 ? 'ملاحظة: المستخدمون المُستعادون عندهم كلمات سر مؤقتة. اطلب من المدير إعادة تعيينها.' : ''));
+    apTab('backups', document.querySelector('.aptab.active'));
+  }catch(e){
+    console.error('restore error',e);
+    showToast('فشلت الاستعادة: '+(e.message||''));
+  }
+}
+
+// إنشاء نسخة + إعادة تحميل قائمة النسخ
+async function createAndRefreshBackup(){
+  const r = await createBackup();
+  if(r){
+    apTab('backups', document.querySelector('.aptab.active'));
+  }
+}
+
+// تحقق وأنشئ نسخة اليوم تلقائياً (يستدعى عند دخول المدير)
+async function autoBackupIfNeeded(){
+  if(!me || me.role !== 'admin') return;
+  if(!myCompanyId) return;
+  try{
+    const today = new Date().toISOString().slice(0,10);
+    const lastKey = 'tawasul_lastbackup_'+myCompanyId;
+    const lastDate = localStorage.getItem(lastKey);
+    if(lastDate === today) return; // عملنا نسخة اليوم
+    // تحقق من Storage أيضاً
+    const list = await listBackups();
+    const hasToday = list.some(f => (f.name||'').startsWith(today));
+    if(hasToday){ localStorage.setItem(lastKey, today); return; }
+    // أنشئ نسخة اليوم
+    const r = await createBackup(true);
+    if(r) localStorage.setItem(lastKey, today);
+  }catch(e){console.warn('autoBackup',e);}
+}
 
 // ==============================
 // SUPER ADMIN — إدارة الشركات
