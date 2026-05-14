@@ -14,7 +14,8 @@
 <style>
 *{box-sizing:border-box;margin:0;padding:0;font-family:'Segoe UI',Tahoma,Arial,sans-serif;}
 :root{--green:#075E54;--green2:#128C7E;--gbg:#ECE5DD;--mout:#DCF8C6;--bd:#e0e0e0;--bg:#fff;--bg2:#f5f5f5;--bg3:#f0f2f5;--t:#111;--t2:#666;--t3:#aaa;--wb:#FFF3CD;--wbd:#FFEAA7;--wt:#856404;--ob:#D4EDDA;--obd:#C3E6CB;--ot:#155724;}
-body{height:100vh;display:flex;flex-direction:column;background:var(--bg3);overflow:hidden;}
+html,body{position:fixed;width:100%;height:100%;overflow:hidden;top:0;left:0;}
+body{display:flex;flex-direction:column;background:var(--bg3);}
 .screen{display:none;}.screen.active{display:flex;}
 svg{display:inline-block;vertical-align:middle;flex-shrink:0;}
 
@@ -257,7 +258,7 @@ textarea.fi{resize:none;font-family:inherit;}
     .ca-av-wrap{width:42px;height:42px;}
 
     /* MESSAGES */
-    .msgs{flex:1;padding:10px 14px;overflow-y:auto;-webkit-overflow-scrolling:touch;min-height:0;}
+    .msgs{flex:1;padding:10px 14px;overflow-y:auto;-webkit-overflow-scrolling:touch;min-height:0;overscroll-behavior:contain;}
     .mi,.mo{max-width:80%;font-size:15px;line-height:1.55;padding:9px 13px;border-radius:12px;}
     .msnd{font-size:12px;}
     .mtm{font-size:11px;}
