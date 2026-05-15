@@ -658,6 +658,24 @@ textarea.fi{resize:none;font-family:inherit;}
 <!-- ================== MESSAGE ACTION MENU ================== -->
 <div id="msg-menu" style="display:none;"></div>
 
+<!-- ================== EDIT COMPANY MODAL ================== -->
+<div class="mbg" id="editco-modal">
+  <div class="modal" onclick="event.stopPropagation()">
+    <div style="display:flex;align-items:center;justify-content:space-between;">
+      <div class="mtitle">تعديل الشركة</div>
+      <button onclick="document.getElementById('editco-modal').classList.remove('open')" style="background:none;border:none;cursor:pointer;padding:0;"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#666" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+    </div>
+    <div class="field"><label>اسم الشركة</label><input class="fi" type="text" id="ec-name"/></div>
+    <div class="field"><label>كود الشركة (slug)</label><input class="fi" type="text" id="ec-slug" style="text-transform:lowercase;"/></div>
+    <div style="margin-top:6px;font-size:12px;color:var(--t2);font-weight:600;">المدير</div>
+    <div class="field"><label>اسم المدير</label><input class="fi" type="text" id="ec-adm-n"/></div>
+    <div class="field"><label>إيميل المدير</label><input class="fi" type="email" id="ec-adm-e"/></div>
+    <div class="crdb" id="ec-msg"></div>
+    <button class="mbtn" onclick="saveCompanyEdit()">حفظ التعديلات</button>
+    <button class="mcanc" onclick="document.getElementById('editco-modal').classList.remove('open')">إلغاء</button>
+  </div>
+</div>
+
 <!-- ================== SUPER ADMIN SCREEN ================== -->
 <div id="sc-superadmin" class="screen">
   <div class="aphdr">
@@ -2487,10 +2505,11 @@ function renderSuperAdmin(){
             <div class="urid">كود الشركة: <b style="color:#075E54;cursor:pointer;" onclick="copyCompanyCode('${c.slug}')" title="نسخ الكود">${c.slug}</b> · مدير: ${adminName} (${adminEmail})</div>
           </div>
           <div style="display:flex;gap:6px;flex-wrap:wrap;">
-            <button class="abt" onclick="copyCompanyCode('${c.slug}')" title="نسخ الكود"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> نسخ</button>
-            ${admins[0] ? `<button class="abt" onclick="resetCompanyAdminPassword('${admins[0].id}','${admins[0].email||''}')" title="تغيير كلمة سر المدير"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg> تغيير كلمة السر</button>` : ''}
-            <button class="abt" onclick="toggleCompanyActive('${c.id}',${!c.is_active})">${c.is_active ? 'تعطيل' : 'تفعيل'}</button>
-            <button class="abt d" onclick="deleteCompany('${c.id}')">${dT}</button>
+            <button class="abt" onclick="openEditCompany('${esc(c.id)}')" title="تعديل بيانات الشركة"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg> تعديل</button>
+            <button class="abt" onclick="copyCompanyCode('${esc(c.slug)}')" title="نسخ الكود"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> نسخ</button>
+            ${admins[0] ? `<button class="abt" onclick="resetCompanyAdminPassword('${esc(admins[0].id)}','${esc(admins[0].email||'')}')" title="تغيير كلمة سر المدير"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg> كلمة السر</button>` : ''}
+            <button class="abt" onclick="toggleCompanyActive('${esc(c.id)}',${!c.is_active})">${c.is_active ? 'تعطيل' : 'تفعيل'}</button>
+            <button class="abt d" onclick="deleteCompany('${esc(c.id)}')">${dT}</button>
           </div>
         </div>
         ${!c.is_active ? '<div style="font-size:11px;color:#c00;">شركة معطلة</div>' : ''}
@@ -2606,6 +2625,81 @@ function copyCompanyCode(slug){
     showToast('تم نسخ كود الشركة: '+slug);
   } else {
     showToast('كود الشركة: '+slug);
+  }
+}
+
+// متغير مؤقت لتذكّر الشركة اللي يتم تعديلها
+let _editingCompany = null;
+function openEditCompany(cid){
+  const c = allCompanies.find(x=>x.id===cid);
+  if(!c){showToast('الشركة غير موجودة');return;}
+  const admin = allUsers.find(u=>u.company_id===cid && u.role==='admin');
+  _editingCompany = {company:c, admin};
+  document.getElementById('ec-name').value = c.name||'';
+  document.getElementById('ec-slug').value = c.slug||'';
+  document.getElementById('ec-adm-n').value = admin?admin.name:'';
+  document.getElementById('ec-adm-e').value = admin?(admin.email||''):'';
+  const msg = document.getElementById('ec-msg');
+  msg.style.display='none';msg.textContent='';
+  if(!admin){
+    msg.style.display='block';
+    msg.textContent='⚠️ لا يوجد مدير لهذه الشركة (لا يمكن تعديل بيانات المدير)';
+  }
+  document.getElementById('editco-modal').classList.add('open');
+}
+
+async function saveCompanyEdit(){
+  if(!_editingCompany){return;}
+  const {company, admin} = _editingCompany;
+  const msg = document.getElementById('ec-msg');
+  const showErr = (m)=>{msg.style.display='block';msg.style.color='#dc3545';msg.textContent=m;};
+
+  const newName = (document.getElementById('ec-name').value||'').trim();
+  let newSlug = (document.getElementById('ec-slug').value||'').trim().toLowerCase().replace(/[^a-z0-9-]/g,'');
+  const newAdmName = (document.getElementById('ec-adm-n').value||'').trim();
+  const newAdmEmail = (document.getElementById('ec-adm-e').value||'').trim();
+
+  if(!newName){showErr('⚠️ اسم الشركة مطلوب');return;}
+  if(!newSlug){showErr('⚠️ كود الشركة مطلوب');return;}
+  if(admin){
+    if(!newAdmName){showErr('⚠️ اسم المدير مطلوب');return;}
+    if(!newAdmEmail){showErr('⚠️ إيميل المدير مطلوب');return;}
+  }
+
+  msg.style.display='block';msg.style.color='#155724';msg.textContent='جاري الحفظ...';
+  try{
+    // 1) تحديث الشركة (لو شي تغيّر)
+    const companyPatch = {};
+    if(newName !== company.name) companyPatch.name = newName;
+    if(newSlug !== company.slug) companyPatch.slug = newSlug;
+    if(Object.keys(companyPatch).length){
+      await sbPatch('companies', 'id=eq.'+company.id, companyPatch);
+      Object.assign(company, companyPatch);
+    }
+    // 2) تحديث المدير (لو موجود وشي تغيّر)
+    if(admin){
+      const adminPatch = {};
+      if(newAdmName !== admin.name) adminPatch.name = newAdmName;
+      if(newAdmEmail !== admin.email) adminPatch.email = newAdmEmail;
+      if(Object.keys(adminPatch).length){
+        await sbPatch('users', 'id=eq.'+admin.id, adminPatch);
+        Object.assign(admin, adminPatch);
+      }
+    }
+    document.getElementById('editco-modal').classList.remove('open');
+    // إعادة تحميل القائمة لإظهار التحديثات
+    await loadSuperAdminData();
+    renderSuperAdmin();
+    showToast('تم حفظ التعديلات ✓');
+  }catch(e){
+    console.error('saveCompanyEdit error',e);
+    if(e.code === '23505' && (e.details||'').includes('slug')){
+      showErr('⚠️ كود الشركة "'+newSlug+'" مستخدم من شركة أخرى');
+    } else if(e.code === '23505' && (e.details||'').includes('email')){
+      showErr('⚠️ هذا الإيميل مستخدم من مستخدم آخر');
+    } else {
+      showErr('فشل الحفظ: '+(e.message||''));
+    }
   }
 }
 
