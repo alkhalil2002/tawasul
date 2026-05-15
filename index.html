@@ -2141,7 +2141,7 @@ async function aStaff(){
   if(!n||!e||!p)return;
   const colors=['#25D366','#34B7F1','#FF8C00','#9B59B6'];
   const {hash, salt} = await hashPassword(p);
-  const res=await sbPost('users',{company_id:myCompanyId,name:n,role:r,email:e,password_hash:hash,password_salt:salt,color:colors[Math.floor(Math.random()*colors.length)]});
+  const res=await sbPost('users',{company_id:myCompanyId,name:n,role:r,email:e,password:'__hashed__',password_hash:hash,password_salt:salt,color:colors[Math.floor(Math.random()*colors.length)]});
   if(res&&res[0]){allUsers.push(res[0]);const b=document.getElementById('scb');b.style.display='block';b.innerHTML=`تم الانشاء<br>ايميل: <b>${e}</b> / كلمة السر: <b>${p}</b>`;}
   apTab('staff',document.querySelector('.aptab.active'));
 }
@@ -2151,7 +2151,7 @@ async function aClient(){
   if(!n||!u||!p)return;
   const colors=['#E74C3C','#9B59B6','#FF8C00'];
   const {hash, salt} = await hashPassword(p);
-  const res=await sbPost('users',{company_id:myCompanyId,name:n,role:'client',username:u,password_hash:hash,password_salt:salt,color:colors[Math.floor(Math.random()*colors.length)]});
+  const res=await sbPost('users',{company_id:myCompanyId,name:n,role:'client',username:u,password:'__hashed__',password_hash:hash,password_salt:salt,color:colors[Math.floor(Math.random()*colors.length)]});
   if(res&&res[0]){allUsers.push(res[0]);const b=document.getElementById('ccb');b.style.display='block';b.innerHTML=`تم الانشاء<br>يوزر: <b>${u}</b> / كلمة السر: <b>${p}</b>`;}
   apTab('clients',document.querySelector('.aptab.active'));
 }
@@ -2172,8 +2172,8 @@ async function resetUserPassword(uid, tab){
   const p=newPass.trim();
   try{
     const {hash, salt}=await hashPassword(p);
-    await sbPatch('users',`id=eq.${uid}`,{password_hash:hash,password_salt:salt,password:null});
-    user.password_hash=hash; user.password_salt=salt; user.password=null;
+    await sbPatch('users',`id=eq.${uid}`,{password_hash:hash,password_salt:salt,password:'__hashed__'});
+    user.password_hash=hash; user.password_salt=salt; user.password='__hashed__';
     showToast('تم تغيير كلمة السر');
     // عرض البيانات الجديدة في رسالة قابلة للنسخ
     const ident = user.email || ('@'+user.username);
@@ -2364,7 +2364,7 @@ async function restoreBackup(filename){
             const {hash, salt} = await hashPassword(tempPass);
             u.password_hash = hash;
             u.password_salt = salt;
-            u.password = null;
+            u.password = '__hashed__';
             tempPasswords.push({email: u.email||u.username, pass: tempPass});
           }
         }
@@ -2510,16 +2510,20 @@ async function createCompany(){
     document.getElementById('cocb').textContent = 'كل الحقول مطلوبة';
     return;
   }
+  let createdCompanyId = null;
+  let createdUserId = null;
   try{
     const co = await sbPost('companies', {name, slug, is_active:true});
     if(!co || !co[0]) throw new Error('فشل إنشاء الشركة');
-    const cid = co[0].id;
+    createdCompanyId = co[0].id;
+    const cid = createdCompanyId;
     const {hash, salt}=await hashPassword(adminPass);
     const adm = await sbPost('users', {
       company_id:cid, name:adminName, role:'admin',
-      email:adminEmail, password_hash:hash, password_salt:salt, color:'#075E54'
+      email:adminEmail, password:'__hashed__', password_hash:hash, password_salt:salt, color:'#075E54'
     });
     if(!adm || !adm[0]) throw new Error('فشل إنشاء المدير');
+    createdUserId = adm[0].id;
     // قالب افتراضي للشركة
     await sbPost('templates', {company_id:cid, name:'قالب مخصص', sections:['عام']});
     document.getElementById('cocb').style.display='block';
@@ -2540,6 +2544,13 @@ async function createCompany(){
     showToast('تم إنشاء الشركة');
   }catch(e){
     console.error(e);
+    // Rollback: احذف ما تم إنشاؤه عشان ما تبقى بيانات يتيمة
+    if(createdUserId){
+      try{ await sbDelete('users', 'id=eq.'+createdUserId); }catch(re){console.warn('rollback user',re);}
+    }
+    if(createdCompanyId){
+      try{ await sbDelete('companies', 'id=eq.'+createdCompanyId); }catch(re){console.warn('rollback company',re);}
+    }
     let msg = 'فشل الإنشاء';
     if(e.code === '23505' && (e.details||'').includes('slug')){
       msg = '⚠️ كود الشركة "' + slug + '" مستخدم بالفعل. اختر كوداً آخر.';
@@ -2568,9 +2579,9 @@ async function resetCompanyAdminPassword(adminId, adminEmail){
   const p = newPass.trim();
   try{
     const {hash, salt}=await hashPassword(p);
-    await sbPatch('users', `id=eq.${adminId}`, {password_hash:hash, password_salt:salt, password:null});
+    await sbPatch('users', `id=eq.${adminId}`, {password_hash:hash, password_salt:salt, password:'__hashed__'});
     const adm = allUsers.find(x=>x.id===adminId);
-    if(adm){adm.password_hash=hash; adm.password_salt=salt; adm.password=null;}
+    if(adm){adm.password_hash=hash; adm.password_salt=salt; adm.password='__hashed__';}
     if(confirm(`تم تغيير كلمة السر ✓\n\nالبيانات الجديدة:\nالإيميل: ${adminEmail}\nكلمة السر: ${p}\n\nاضغط OK لنسخها`)){
       if(navigator.clipboard){
         navigator.clipboard.writeText(`${adminEmail}\n${p}`);
