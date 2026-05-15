@@ -894,8 +894,9 @@ function ghLabel(g){
 // BOOT
 // ==============================
 async function boot(){
-  // عرض شاشة الدخول فوراً — لا نجلب أي بيانات قبل أن يسجل المستخدم دخوله
+  // إخفاء أي splash/loader فوراً — UI يظهر مباشرة
   showLoader(false);
+  document.body.style.visibility='visible';
   // محاولة استرجاع جلسة سابقة من localStorage
   try{
     const saved=localStorage.getItem('tawasul_session');
@@ -933,33 +934,62 @@ async function boot(){
   showSc('login');
 }
 
-// جلب بيانات الشركة الكاملة (يستدعى بعد تسجيل الدخول فقط)
-async function loadCompanyData(){
-  try{
-    const [u,g,t,s] = await Promise.all([
-      sbGet('users',_cq('order=created_at')),
-      sbGet('groups',_cq('order=created_at')),
-      sbGet('templates',_cq('order=created_at')),
-      sbGet('settings','id=eq.1')
-    ]);
-    if(Array.isArray(u)) allUsers=u;
-    if(Array.isArray(g)) allGroups=g;
-    if(Array.isArray(t)) allTemplates=t;
-    if(s&&s[0]) settings=s[0];
-    // جلب أعضاء كل مجموعة بالتوازي
-    await Promise.all(allGroups.map(async gr=>{
-      try{
-        const mems=await sbGet('group_members',`group_id=eq.${gr.id}&select=user_id`);
-        gr.members=Array.isArray(mems)?mems.map(m=>m.user_id):[];
-      }catch(e){gr.members=[];}
-    }));
-    // تخزين cache للعرض الفوري في المرة القادمة
+// جلب بيانات الشركة — استخدم cache فوراً، حدّث في الخلفية
+async function loadCompanyData(forceRefresh=false){
+  // 1) محاولة عرض cache فوراً (بدون انتظار شبكة)
+  let cacheUsed = false;
+  if(!forceRefresh){
     try{
-      localStorage.setItem('tawasul_cache_'+myCompanyId, JSON.stringify({
-        users:allUsers, groups:allGroups, templates:allTemplates, settings, ts:Date.now()
-      }));
+      const cached=localStorage.getItem('tawasul_cache_'+myCompanyId);
+      if(cached){
+        const c=JSON.parse(cached);
+        if(c.users)allUsers=c.users;
+        if(c.groups)allGroups=c.groups;
+        if(c.templates)allTemplates=c.templates;
+        if(c.settings)settings=c.settings;
+        cacheUsed = true;
+      }
     }catch(e){}
-  }catch(e){console.error('loadCompanyData error:',e);}
+  }
+
+  // 2) جلب من الشبكة (في الخلفية لو cache كان موجود)
+  const fetchAll = async () => {
+    try{
+      const [u,g,t,s] = await Promise.all([
+        sbGet('users',_cq('order=created_at')),
+        sbGet('groups',_cq('order=created_at')),
+        sbGet('templates',_cq('order=created_at')),
+        sbGet('settings','id=eq.1')
+      ]);
+      if(Array.isArray(u)) allUsers=u;
+      if(Array.isArray(g)) allGroups=g;
+      if(Array.isArray(t)) allTemplates=t;
+      if(s&&s[0]) settings=s[0];
+      await Promise.all(allGroups.map(async gr=>{
+        try{
+          const mems=await sbGet('group_members',`group_id=eq.${gr.id}&select=user_id`);
+          gr.members=Array.isArray(mems)?mems.map(m=>m.user_id):[];
+        }catch(e){gr.members=[];}
+      }));
+      try{
+        localStorage.setItem('tawasul_cache_'+myCompanyId, JSON.stringify({
+          users:allUsers, groups:allGroups, templates:allTemplates, settings, ts:Date.now()
+        }));
+      }catch(e){}
+      // أعد رسم القائمة لو المستخدم في الشاشة الرئيسية
+      if(me && document.getElementById('clist')){
+        try{ renderChatList(); }catch(e){}
+      }
+    }catch(e){console.error('loadCompanyData fetch error:',e);}
+  };
+
+  if(cacheUsed){
+    // عرض فوري — لا ننتظر الشبكة
+    fetchAll();
+  } else {
+    // ما فيه cache — ننتظر الشبكة
+    await fetchAll();
+  }
 }
 
 // ==============================
@@ -2561,9 +2591,10 @@ boot();
 <div id="app-version" style="display:none;" data-version="1.5.0" data-updates="رفع الملفات الحقيقية | تعديل القوالب | أيام الدوام | صلاحيات المدير والمشرف | ترتيب المحادثات | شعار مخصص"></div>
 
 <script>
-if('serviceWorker' in navigator){
+// تسجيل Service Worker فقط لو محملين من https (مش file://)
+if('serviceWorker' in navigator && location.protocol.startsWith('http')){
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').then(reg => {
+    navigator.serviceWorker.register('sw.js').then(reg => {
       console.log('SW registered');
     }).catch(err => console.log('SW error:', err));
   });
