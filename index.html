@@ -753,6 +753,55 @@ function _cq(extra){
 }
 
 // ==============================
+// PASSWORD HASHING (PBKDF2 via Web Crypto API)
+// ==============================
+function _b64(buf){return btoa(String.fromCharCode(...new Uint8Array(buf)));}
+function _ub64(s){const bin=atob(s);const arr=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)arr[i]=bin.charCodeAt(i);return arr;}
+
+async function _deriveKey(password, salt){
+  const enc=new TextEncoder();
+  const km=await crypto.subtle.importKey('raw', enc.encode(password), {name:'PBKDF2'}, false, ['deriveBits']);
+  const bits=await crypto.subtle.deriveBits({name:'PBKDF2', salt:salt, iterations:120000, hash:'SHA-256'}, km, 256);
+  return new Uint8Array(bits);
+}
+
+async function hashPassword(password){
+  const salt=crypto.getRandomValues(new Uint8Array(16));
+  const hash=await _deriveKey(password, salt);
+  return {hash:_b64(hash), salt:_b64(salt)};
+}
+
+async function verifyPassword(password, storedHash, storedSalt){
+  try{
+    const salt=_ub64(storedSalt);
+    const hash=await _deriveKey(password, salt);
+    return _b64(hash) === storedHash;
+  }catch(e){return false;}
+}
+
+// مساعد: ابحث عن المستخدم بالإيميل/اليوزر فقط (بدون كلمة سر)، ثم تحقق محلياً
+async function _findUserAndVerify(query, password){
+  const res=await sbGet('users', query);
+  if(!Array.isArray(res)) return null;
+  for(const u of res){
+    // 1) لو فيه hash، تحقق منه
+    if(u.password_hash && u.password_salt){
+      if(await verifyPassword(password, u.password_hash, u.password_salt)) return u;
+    }
+    // 2) ترحيل تدريجي: لو لسة عنده password قديم نص عادي يطابق، شفّره الآن
+    else if(u.password && u.password === password){
+      const {hash, salt}=await hashPassword(password);
+      try{
+        await sbPatch('users', 'id=eq.'+u.id, {password_hash:hash, password_salt:salt, password:null});
+      }catch(e){console.warn('migration patch failed',e);}
+      u.password_hash=hash; u.password_salt=salt; u.password=null;
+      return u;
+    }
+  }
+  return null;
+}
+
+// ==============================
 // UTILS
 // ==============================
 function uI(u){return u.name.substring(0,2);}
@@ -962,8 +1011,7 @@ async function doLogin(){
     // المسار 1: لا يوجد كود → جرّب super_admin (موظفون فقط)
     if(!code && lt==='staff'){
       const email=document.getElementById('li-email').value.trim();
-      const res=await sbGet('users',`email=eq.${encodeURIComponent(email)}&password=eq.${encodeURIComponent(pass)}&role=eq.super_admin`);
-      if(Array.isArray(res)&&res[0]) u=res[0];
+      u = await _findUserAndVerify(`email=eq.${encodeURIComponent(email)}&role=eq.super_admin`, pass);
       if(!u){
         errEl.textContent='الرجاء إدخال كود الشركة';
         errEl.style.display='block';
@@ -981,12 +1029,10 @@ async function doLogin(){
       const cid=cos[0].id;
       if(lt==='staff'){
         const email=document.getElementById('li-email').value.trim();
-        const res=await sbGet('users',`company_id=eq.${cid}&email=eq.${encodeURIComponent(email)}&password=eq.${encodeURIComponent(pass)}&role=neq.client`);
-        if(Array.isArray(res)&&res[0]) u=res[0];
+        u = await _findUserAndVerify(`company_id=eq.${cid}&email=eq.${encodeURIComponent(email)}&role=neq.client`, pass);
       } else {
         const uname=document.getElementById('li-user').value.trim();
-        const res=await sbGet('users',`company_id=eq.${cid}&username=eq.${encodeURIComponent(uname)}&password=eq.${encodeURIComponent(pass)}&role=eq.client`);
-        if(Array.isArray(res)&&res[0]) u=res[0];
+        u = await _findUserAndVerify(`company_id=eq.${cid}&username=eq.${encodeURIComponent(uname)}&role=eq.client`, pass);
       }
     } else {
       // عميل بدون كود
@@ -1772,7 +1818,8 @@ async function aStaff(){
   const n=document.getElementById('ns-n').value.trim(),r=document.getElementById('ns-r').value,e=document.getElementById('ns-e').value.trim(),p=document.getElementById('ns-p').value.trim();
   if(!n||!e||!p)return;
   const colors=['#25D366','#34B7F1','#FF8C00','#9B59B6'];
-  const res=await sbPost('users',{company_id:myCompanyId,name:n,role:r,email:e,password:p,color:colors[Math.floor(Math.random()*colors.length)]});
+  const {hash, salt} = await hashPassword(p);
+  const res=await sbPost('users',{company_id:myCompanyId,name:n,role:r,email:e,password_hash:hash,password_salt:salt,color:colors[Math.floor(Math.random()*colors.length)]});
   if(res&&res[0]){allUsers.push(res[0]);const b=document.getElementById('scb');b.style.display='block';b.innerHTML=`تم الانشاء<br>ايميل: <b>${e}</b> / كلمة السر: <b>${p}</b>`;}
   apTab('staff',document.querySelector('.aptab.active'));
 }
@@ -1781,7 +1828,8 @@ async function aClient(){
   const n=document.getElementById('nc-n').value.trim(),u=document.getElementById('nc-u').value.trim(),p=document.getElementById('nc-p').value.trim();
   if(!n||!u||!p)return;
   const colors=['#E74C3C','#9B59B6','#FF8C00'];
-  const res=await sbPost('users',{company_id:myCompanyId,name:n,role:'client',username:u,password:p,color:colors[Math.floor(Math.random()*colors.length)]});
+  const {hash, salt} = await hashPassword(p);
+  const res=await sbPost('users',{company_id:myCompanyId,name:n,role:'client',username:u,password_hash:hash,password_salt:salt,color:colors[Math.floor(Math.random()*colors.length)]});
   if(res&&res[0]){allUsers.push(res[0]);const b=document.getElementById('ccb');b.style.display='block';b.innerHTML=`تم الانشاء<br>يوزر: <b>${u}</b> / كلمة السر: <b>${p}</b>`;}
   apTab('clients',document.querySelector('.aptab.active'));
 }
@@ -1801,8 +1849,9 @@ async function resetUserPassword(uid, tab){
   if(!newPass||newPass.trim().length<1){return;}
   const p=newPass.trim();
   try{
-    await sbPatch('users',`id=eq.${uid}`,{password:p});
-    user.password=p;
+    const {hash, salt}=await hashPassword(p);
+    await sbPatch('users',`id=eq.${uid}`,{password_hash:hash,password_salt:salt,password:null});
+    user.password_hash=hash; user.password_salt=salt; user.password=null;
     showToast('تم تغيير كلمة السر');
     // عرض البيانات الجديدة في رسالة قابلة للنسخ
     const ident = user.email || ('@'+user.username);
@@ -2121,9 +2170,10 @@ async function createCompany(){
     const co = await sbPost('companies', {name, slug, is_active:true});
     if(!co || !co[0]) throw new Error('فشل إنشاء الشركة');
     const cid = co[0].id;
+    const {hash, salt}=await hashPassword(adminPass);
     const adm = await sbPost('users', {
       company_id:cid, name:adminName, role:'admin',
-      email:adminEmail, password:adminPass, color:'#075E54'
+      email:adminEmail, password_hash:hash, password_salt:salt, color:'#075E54'
     });
     if(!adm || !adm[0]) throw new Error('فشل إنشاء المدير');
     // قالب افتراضي للشركة
@@ -2165,9 +2215,10 @@ async function resetCompanyAdminPassword(adminId, adminEmail){
   if(!newPass || !newPass.trim()) return;
   const p = newPass.trim();
   try{
-    await sbPatch('users', `id=eq.${adminId}`, {password: p});
+    const {hash, salt}=await hashPassword(p);
+    await sbPatch('users', `id=eq.${adminId}`, {password_hash:hash, password_salt:salt, password:null});
     const adm = allUsers.find(x=>x.id===adminId);
-    if(adm) adm.password = p;
+    if(adm){adm.password_hash=hash; adm.password_salt=salt; adm.password=null;}
     if(confirm(`تم تغيير كلمة السر ✓\n\nالبيانات الجديدة:\nالإيميل: ${adminEmail}\nكلمة السر: ${p}\n\nاضغط OK لنسخها`)){
       if(navigator.clipboard){
         navigator.clipboard.writeText(`${adminEmail}\n${p}`);
