@@ -701,7 +701,11 @@ async function sbDelete(table, query){
 
 // Real-time via Supabase Realtime WebSocket
 let realtimeWs = null;
+let _realtimeWanted = false;
 function connectRealtime(){
+  // لا تشغّل Realtime للسوبر أدمن أو بدون شركة
+  if(!me || me.role==='super_admin' || !myCompanyId) return;
+  _realtimeWanted = true;
   const wsUrl = SUPA_URL.replace('https','wss') + '/realtime/v1/websocket?apikey=' + SUPA_KEY + '&vsn=1.0.0';
   realtimeWs = new WebSocket(wsUrl);
   realtimeWs.onopen = () => {
@@ -711,11 +715,12 @@ function connectRealtime(){
   };
   realtimeWs.onmessage = (e) => {
     try {
+      if(!me || !myCompanyId) return; // تجاهل لو لا توجد جلسة
       const msg = JSON.parse(e.data);
       if(msg.event === 'INSERT' && msg.payload && msg.payload.record){
         const rec = msg.payload.record;
-        // تجاهل الرسائل التي لا تخص شركتنا
-        if(myCompanyId && rec.company_id && rec.company_id !== myCompanyId) return;
+        // تجاهل الرسائل التي لا تخص شركتنا (حماية صارمة)
+        if(rec.company_id !== myCompanyId) return;
         if(curChat && (
           (ct==='dm' && ((rec.from_user===curChat && rec.to_user===me.id)||(rec.from_user===me.id && rec.to_user===curChat))) ||
           (ct==='group' && rec.group_id===curChat)
@@ -745,12 +750,12 @@ function connectRealtime(){
           renderChatList();
         }
       }
-      // تحديث علامات الوصول والقراءة
+      // تحديث علامات الوصول والقراءة + التعديلات
       if(msg.event === 'UPDATE' && msg.payload && msg.payload.record){
         const rec = msg.payload.record;
-        if(myCompanyId && rec.company_id && rec.company_id !== myCompanyId) return;
+        if(rec.company_id !== myCompanyId) return;
         if(curChat && (
-          (ct==='dm' && rec.from_user===me.id && rec.to_user===curChat) ||
+          (ct==='dm' && (rec.from_user===curChat || rec.to_user===curChat)) ||
           (ct==='group' && rec.group_id===curChat)
         )){
           loadMessages();
@@ -758,7 +763,19 @@ function connectRealtime(){
       }
     } catch(err){}
   };
-  realtimeWs.onclose = () => { setTimeout(connectRealtime, 3000); };
+  realtimeWs.onerror = (e) => { console.warn('realtime ws error', e); };
+  realtimeWs.onclose = () => {
+    realtimeWs = null;
+    if(_realtimeWanted){ setTimeout(connectRealtime, 3000); }
+  };
+}
+
+function disconnectRealtime(){
+  _realtimeWanted = false;
+  if(realtimeWs){
+    try{ realtimeWs.close(); }catch(e){}
+    realtimeWs = null;
+  }
 }
 
 // ==============================
@@ -783,6 +800,26 @@ function _cq(extra){
   if(!myCompanyId)return extra||'';
   const f='company_id=eq.'+myCompanyId;
   return extra?(extra+'&'+f):f;
+}
+
+// ==============================
+// XSS PROTECTION — تطهير الإدخالات قبل عرضها في HTML
+// ==============================
+function esc(s){
+  if(s===null||s===undefined)return '';
+  return String(s)
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;')
+    .replace(/'/g,'&#39;');
+}
+// تطهير URL — يقبل http(s) فقط لمنع javascript: URLs
+function escUrl(u){
+  if(!u)return '';
+  const s=String(u);
+  if(s.startsWith('http://')||s.startsWith('https://')||s.startsWith('data:image/'))return esc(s);
+  return '';
 }
 
 // ==============================
@@ -1144,7 +1181,21 @@ async function doLogin(){
 }
 
 async function doLogout(){
-  me=null;curChat=null;myCompanyId=null;
+  // أغلق WebSocket وأوقف إعادة الاتصال
+  disconnectRealtime();
+  // أغلق أي قائمة/مودال مفتوح
+  try{closeMsgMenu();}catch(e){}
+  try{cancelReply();}catch(e){}
+  try{cancelEdit();}catch(e){}
+  // صفّر كل بيانات الجلسة
+  me=null;curChat=null;myCompanyId=null;ct='dm';
+  allUsers=[];allGroups=[];allTemplates=[];allCompanies=[];
+  settings={work_start:8, work_end:17, work_days:[0,1,2,3,4]};
+  msgTimeCache={};lastMsgPreview={};lastMsgTime={};unreadCount={};
+  msgCache={};lastMsgs=[];
+  // أزل style الذي يضبط حجم نافذة المحادثة على iOS
+  const achat=document.getElementById('achat');
+  if(achat){achat.style.top='';achat.style.left='';achat.style.width='';achat.style.height='';achat.classList.remove('mobile-active');}
   try{localStorage.removeItem('tawasul_session');}catch(e){}
   showSc('login');
   // إعادة تعبئة آخر كود مستخدم
@@ -1222,11 +1273,11 @@ function renderChatList(filter){
       const t=lastMsgTime[u.id]||'';
       const uc=unreadCount[u.id]||0;
       const ucHtml=uc>0?`<span class="unread-badge">${uc>99?'99+':uc}</span>`:'';
-      return`<div class="ci" onclick="openDM('${u.id}')" id="ci-${u.id}">
+      return`<div class="ci" onclick="openDM('${esc(u.id)}')" id="ci-${esc(u.id)}">
         ${avE(u,46)}
         <div class="cin">
-          <div class="cit"><span class="cnm">${u.name} <span class="badge ${RB[u.role]}">${RS[u.role]}</span></span><span class="ctm">${t}</span></div>
-          <div class="cpv-row"><div class="cpv">${preview}</div>${ucHtml}</div>
+          <div class="cit"><span class="cnm">${esc(u.name)} <span class="badge ${RB[u.role]}">${RS[u.role]}</span></span><span class="ctm">${esc(t)}</span></div>
+          <div class="cpv-row"><div class="cpv">${esc(preview)}</div>${ucHtml}</div>
         </div>
       </div>`;
     } else {
@@ -1236,11 +1287,11 @@ function renderChatList(filter){
       const t=lastMsgTime[g.id]||'';
       const uc=unreadCount[g.id]||0;
       const ucHtml=uc>0?`<span class="unread-badge">${uc>99?'99+':uc}</span>`:'';
-      return`<div class="ci" onclick="openG('${g.id}')" id="cig-${g.id}">
+      return`<div class="ci" onclick="openG('${esc(g.id)}')" id="cig-${esc(g.id)}">
         ${gAv(46)}
         <div class="cin">
-          <div class="cit"><span class="cnm">${g.name}${lk?` <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#856404" stroke-width="2" stroke-linecap="round" style="display:inline-block;vertical-align:middle;"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>`:''}</span><span class="ctm">${t}</span></div>
-          <div class="cpv-row"><div class="cpv">${preview}</div>${ucHtml}</div>
+          <div class="cit"><span class="cnm">${esc(g.name)}${lk?` <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#856404" stroke-width="2" stroke-linecap="round" style="display:inline-block;vertical-align:middle;"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>`:''}</span><span class="ctm">${esc(t)}</span></div>
+          <div class="cpv-row"><div class="cpv">${esc(preview)}</div>${ucHtml}</div>
         </div>
       </div>`;
     }
@@ -1271,6 +1322,10 @@ function filterChats(v){const t=document.querySelector('.stab.active');t&&t.text
 async function openDM(uid){
   curChat=uid;ct='dm';showFiles=false;
   unreadCount[uid]=0;
+  // تنظيف حالات الرد/التعديل والقوائم
+  cancelReply();cancelEdit();closeMsgMenu();
+  // إعادة رسم القائمة لإخفاء شارة عدم القراءة
+  try{renderChatList();}catch(e){}
   // في المحادثات الخاصة الجميع يقدر يرفع ملفات
   const ab=document.getElementById('msg-attach-btn');
   if(ab) ab.style.display='flex';
@@ -1301,6 +1356,8 @@ async function openDM(uid){
 async function openG(gid){
   curChat=gid;ct='group';showFiles=false;
   unreadCount[gid]=0;
+  cancelReply();cancelEdit();closeMsgMenu();
+  try{renderChatList();}catch(e){}
   // داخل المجموعة: العميل لا يستطيع رفع ملفات
   const ab=document.getElementById('msg-attach-btn');
   if(ab) ab.style.display=(me && me.role==='client')?'none':'flex';
@@ -1372,7 +1429,9 @@ async function markAsDelivered(){
 }
 
 async function loadMessages(){
+  if(!me || !curChat) return; // حماية: لا تستعلم بدون جلسة أو محادثة
   const area=document.getElementById('msgs');
+  if(!area) return;
   area.innerHTML='<div class="sysmsg">جاري التحميل...</div>';
   let ms=[];
   try {
@@ -1381,7 +1440,11 @@ async function loadMessages(){
     } else {
       ms = await sbGet('messages',_cq(`group_id=eq.${curChat}&order=created_at.asc`));
     }
-  } catch(e){ ms=[]; }
+  } catch(e){
+    console.warn('loadMessages failed', e);
+    area.innerHTML='<div class="sysmsg" style="color:#dc3545;">تعذّر تحميل الرسائل، تحقق من الاتصال</div>';
+    return;
+  }
   renderMessages(ms);
 }
 
@@ -1411,21 +1474,22 @@ function renderMessages(ms){
       if(orig){
         const origSender = allUsers.find(u=>u.id===orig.from_user);
         const origText = (orig.text||'[ملف]').substring(0,60);
-        replyPreview = `<div class="reply-preview" onclick="scrollToMsg('${m.reply_to_id}')"><div class="reply-sender">${origSender?origSender.name:'?'}</div><div class="reply-text">${origText}</div></div>`;
+        replyPreview = `<div class="reply-preview" onclick="scrollToMsg('${esc(m.reply_to_id)}')"><div class="reply-sender">${esc(origSender?origSender.name:'?')}</div><div class="reply-text">${esc(origText)}</div></div>`;
       } else {
         replyPreview = `<div class="reply-preview"><div class="reply-text" style="font-style:italic;color:#999;">[رسالة محذوفة]</div></div>`;
       }
     }
     let msgContent='';
-    if(m.type==='image'&&m.file_url){
-      msgContent=`<img src="${m.file_url}" style="max-width:220px;max-height:220px;border-radius:8px;display:block;cursor:pointer;object-fit:cover;" onclick="window.open('${m.file_url}','_blank')" onerror="this.style.display='none'"/>`;
-    } else if(m.type==='file'&&m.file_url){
-      msgContent=`<a href="${m.file_url}" target="_blank" download="${m.file_name||'ملف'}" style="display:flex;align-items:center;gap:8px;color:inherit;text-decoration:none;padding:4px 0;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg><span style="font-size:13px;">${m.file_name||m.text}</span></a>`;
+    const safeUrl = escUrl(m.file_url);
+    if(m.type==='image' && safeUrl){
+      msgContent=`<img src="${safeUrl}" style="max-width:220px;max-height:220px;border-radius:8px;display:block;cursor:pointer;object-fit:cover;" onclick="window.open('${safeUrl}','_blank')" onerror="this.style.display='none'"/>`;
+    } else if(m.type==='file' && safeUrl){
+      msgContent=`<a href="${safeUrl}" target="_blank" download="${esc(m.file_name||'ملف')}" style="display:flex;align-items:center;gap:8px;color:inherit;text-decoration:none;padding:4px 0;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg><span style="font-size:13px;">${esc(m.file_name||m.text)}</span></a>`;
     } else {
-      msgContent=`<div>${m.text}</div>`;
+      msgContent=`<div>${esc(m.text)}</div>`;
     }
     const editedLabel = m.edited_at?'<span style="font-size:10px;color:#999;font-style:italic;"> (معدّلة)</span>':'';
-    return`<div class="${out?'mo':'mi'}" id="msg-${m.id}" onmousedown="startLongPress(event,'${m.id}')" ontouchstart="startLongPress(event,'${m.id}')" onmouseup="endLongPress()" ontouchend="endLongPress()" onmouseleave="endLongPress()" oncontextmenu="event.preventDefault();openMsgMenu('${m.id}');return false;">${(!out&&ct==='group'&&su)?`<div class="msnd">${su.name}</div>`:''}${replyPreview} ${msgContent}<div class="mtm">${t}${editedLabel}${ticks}</div></div>`;
+    return`<div class="${out?'mo':'mi'}" id="msg-${esc(m.id)}" onmousedown="startLongPress(event,'${esc(m.id)}')" ontouchstart="startLongPress(event,'${esc(m.id)}')" onmouseup="endLongPress()" ontouchend="endLongPress()" onmouseleave="endLongPress()" oncontextmenu="event.preventDefault();openMsgMenu('${esc(m.id)}');return false;">${(!out&&ct==='group'&&su)?`<div class="msnd">${esc(su.name)}</div>`:''}${replyPreview} ${msgContent}<div class="mtm">${t}${editedLabel}${ticks}</div></div>`;
   }).join('');
   area.scrollTop=area.scrollHeight;
 }
@@ -1465,7 +1529,7 @@ async function sendMsg(){
   // وضع التعديل: PATCH بدل POST
   if(editingMessage){
     const mid=editingMessage.id;
-    sbPatch('messages',`id=eq.${mid}`,{text, edited_at:new Date().toISOString()})
+    sbPatch('messages',_cq(`id=eq.${mid}&from_user=eq.${me.id}`),{text, edited_at:new Date().toISOString()})
       .then(()=>{ loadMessages().then(()=>{ if(document.activeElement!==inp) inp.focus(); }); })
       .catch(()=>showToast('فشل التعديل'));
     cancelEdit();
@@ -1514,6 +1578,8 @@ function closeMsgMenu(){const m=document.getElementById('msg-menu');if(m)m.style
 function replyToMsg(mid){
   const m = lastMsgs.find(x=>x.id===mid);
   if(!m) return;
+  // ألغِ حالة التعديل لو كانت نشطة (لتجنب التداخل)
+  if(editingMessage){editingMessage=null;document.getElementById('msg-inp').value='';}
   const sender = allUsers.find(u=>u.id===m.from_user);
   replyingTo = {id: m.id, text: m.text||'[ملف]', from_user_name: sender?sender.name:'?'};
   showReplyBar();
@@ -1531,8 +1597,8 @@ function showReplyBar(){
   if(!replyingTo){bar.style.display='none';return;}
   bar.style.display='flex';
   bar.innerHTML = `<div style="flex:1;border-right:3px solid #25D366;padding:6px 10px;background:#f8f8f8;border-radius:6px;">
-    <div style="font-size:11px;color:#25D366;font-weight:600;">رد على ${replyingTo.from_user_name}</div>
-    <div style="font-size:12px;color:#666;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:240px;">${(replyingTo.text||'').substring(0,50)}</div>
+    <div style="font-size:11px;color:#25D366;font-weight:600;">رد على ${esc(replyingTo.from_user_name)}</div>
+    <div style="font-size:12px;color:#666;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:240px;">${esc((replyingTo.text||'').substring(0,50))}</div>
   </div>
   <button onclick="cancelReply()" style="background:none;border:none;cursor:pointer;padding:6px;color:#888;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>`;
 }
@@ -1540,6 +1606,8 @@ function showReplyBar(){
 function startEditMsg(mid){
   const m = lastMsgs.find(x=>x.id===mid);
   if(!m || m.from_user!==me.id) return;
+  // ألغِ حالة الرد لو كانت نشطة
+  if(replyingTo) replyingTo=null;
   editingMessage = {id:m.id, text:m.text};
   const inp = document.getElementById('msg-inp');
   inp.value = m.text;
@@ -1560,7 +1628,7 @@ function showEditBar(){
   bar.style.display='flex';
   bar.innerHTML = `<div style="flex:1;border-right:3px solid #FF9500;padding:6px 10px;background:#FFF8E7;border-radius:6px;">
     <div style="font-size:11px;color:#FF9500;font-weight:600;">تعديل الرسالة</div>
-    <div style="font-size:12px;color:#666;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:240px;">${(editingMessage.text||'').substring(0,50)}</div>
+    <div style="font-size:12px;color:#666;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:240px;">${esc((editingMessage.text||'').substring(0,50))}</div>
   </div>
   <button onclick="cancelEdit()" style="background:none;border:none;cursor:pointer;padding:6px;color:#888;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>`;
 }
@@ -1569,7 +1637,7 @@ async function delMsg(mid){
   closeMsgMenu();
   if(!confirm('حذف هذه الرسالة نهائياً؟')) return;
   try{
-    await sbDelete('messages',`id=eq.${mid}`);
+    await sbDelete('messages',_cq(`id=eq.${mid}`));
     await loadMessages();
   }catch(e){showToast('فشل الحذف');}
 }
@@ -1625,7 +1693,8 @@ function toggleFiles(){
 }
 
 async function loadFiles(){
-  const g=allGroups.find(x=>x.id===curChat);if(!g||!g.sections)return;
+  if(!me || !curChat) return;
+  const g=allGroups.find(x=>x.id===curChat);if(!g||!Array.isArray(g.sections))return;
   if(!cfs||!g.sections.includes(cfs))cfs=g.sections[0];
   document.getElementById('ftabs').innerHTML=g.sections.map(s=>`<div class="ftab ${s===cfs?'active':''}" onclick="swFS('${s}')">${s}</div>`).join('');
   const files = await sbGet('group_files',_cq(`group_id=eq.${curChat}&section=eq.${encodeURIComponent(cfs)}&order=created_at.asc`));
@@ -1644,12 +1713,11 @@ function renderFiles(files,g){
 async function swFS(s){cfs=s;await loadFiles();}
 
 async function delFile(fid){
-  // العميل والموظف العادي لا يستطيعون حذف ملفات المجموعة
   if(!me || (me.role !== 'admin' && me.role !== 'supervisor')){
     showToast('حذف الملفات مخصص للمدير والمشرف فقط');
     return;
   }
-  await sbDelete('group_files',`id=eq.${fid}`);
+  await sbDelete('group_files',_cq(`id=eq.${fid}`));
   await loadFiles();
 }
 
@@ -1831,9 +1899,11 @@ function pickImg(input){const file=input.files[0];if(!file)return;const r=new Fi
 async function savePR(){
   const n=document.getElementById('p-name').value.trim();
   if(n){
-    await sbPatch('users',`id=eq.${me.id}`,{name:n,color:me.color});
+    const patch={name:n, color:me.color};
+    if(me.img !== undefined) patch.img = me.img;
+    await sbPatch('users',`id=eq.${me.id}`,patch);
     me.name=n;
-    const u=allUsers.find(x=>x.id===me.id);if(u){u.name=n;u.color=me.color;}
+    const u=allUsers.find(x=>x.id===me.id);if(u){u.name=n;u.color=me.color;u.img=me.img;}
   }
   closePR();
   document.getElementById('sh-av').innerHTML=avE(me,40);
@@ -1884,7 +1954,7 @@ async function apTab(tab,el){
       const canDel = me.role==='admin' || (me.role==='supervisor' && u.role==='employee');
       const canResetPass = u.id !== me.id && (me.role==='admin' || (me.role==='supervisor' && u.role==='employee'));
       const keyIcon = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>`;
-      return`<div class="urow">${avE(u,38)}<div class="uri"><div class="urn">${u.name}</div><div class="urid">${u.email||'—'} · <span class="badge ${RB[u.role]}">${RS[u.role]}</span></div></div><div class="ura">${canResetPass?`<button class="abt" onclick="resetUserPassword('${u.id}','staff')" title="إعادة تعيين كلمة السر">${keyIcon}</button>`:''}${canDel?`<button class="abt d" onclick="dU('${u.id}','staff')">${dT}</button>`:''}</div></div>`;
+      return`<div class="urow">${avE(u,38)}<div class="uri"><div class="urn">${esc(u.name)}</div><div class="urid">${esc(u.email||'—')} · <span class="badge ${RB[u.role]}">${RS[u.role]}</span></div></div><div class="ura">${canResetPass?`<button class="abt" onclick="resetUserPassword('${esc(u.id)}','staff')" title="إعادة تعيين كلمة السر">${keyIcon}</button>`:''}${canDel?`<button class="abt d" onclick="dU('${esc(u.id)}','staff')">${dT}</button>`:''}</div></div>`;
     }).join('')}`;
   } else if(tab==='clients'){
     b.innerHTML=`<div class="stitle">العملاء</div>
@@ -1897,7 +1967,7 @@ async function apTab(tab,el){
     </div>
     ${allUsers.filter(x=>x.role==='client').map(u=>{
       const keyIcon = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>`;
-      return`<div class="urow">${avE(u,38)}<div class="uri"><div class="urn">${u.name}</div><div class="urid">@${u.username||'—'}</div></div><div class="ura"><button class="abt" onclick="cpC('${u.username}','${u.password}')">${dC} نسخ</button><button class="abt" onclick="resetUserPassword('${u.id}','clients')" title="إعادة تعيين كلمة السر">${keyIcon}</button><button class="abt d" onclick="dU('${u.id}','clients')">${dT}</button></div></div>`;
+      return`<div class="urow">${avE(u,38)}<div class="uri"><div class="urn">${esc(u.name)}</div><div class="urid">@${esc(u.username||'—')}</div></div><div class="ura"><button class="abt" onclick="resetUserPassword('${esc(u.id)}','clients')" title="إعادة تعيين كلمة السر">${keyIcon}</button><button class="abt d" onclick="dU('${esc(u.id)}','clients')">${dT}</button></div></div>`;
     }).join('')}`;
   } else if(tab==='templates'){
     nts=[];
@@ -1994,7 +2064,11 @@ async function saveSettings(){
   const e=document.getElementById('ws-e').value;
   settings.work_start=parseInt(s);
   settings.work_end=parseInt(e);
-  await sbPatch('settings','id=eq.1',{work_start:settings.work_start,work_end:settings.work_end});
+  await sbPatch('settings','id=eq.1',{
+    work_start:settings.work_start,
+    work_end:settings.work_end,
+    work_days:settings.work_days
+  });
   showToast('تم حفظ أوقات الدوام');
 }
 
@@ -2122,10 +2196,13 @@ async function gatherBackupData(){
     sbGet('templates', cq+'&order=created_at'),
     sbGet('group_files', cq+'&order=created_at')
   ]);
-  // نزيل كلمات السر من النسخة لحماية البيانات
-  const sanitizedUsers = (users||[]).map(u=>{const {password,...rest}=u;return rest;});
+  // نزيل كلمات السر (نص عادي + hash + salt) من النسخة لحماية البيانات
+  const sanitizedUsers = (users||[]).map(u=>{
+    const {password, password_hash, password_salt, push_token, ...rest} = u;
+    return rest;
+  });
   return {
-    version:'1.0',
+    version:'1.1',
     company_id: myCompanyId,
     created_at: new Date().toISOString(),
     counts:{
@@ -2260,6 +2337,7 @@ async function restoreBackup(filename){
     if(!backup.data || backup.company_id !== myCompanyId)throw new Error('النسخة لا تخص هذه الشركة');
 
     const stats = {users:0, groups:0, members:0, messages:0, templates:0, files:0};
+    const tempPasswords = []; // لعرضها للمدير في النهاية
     // الاستعادة الإضافية — نتحقق من وجود كل سجل قبل الإضافة
     async function restoreIfMissing(table, rows, statKey){
       if(!rows || !rows.length) return;
@@ -2268,9 +2346,18 @@ async function restoreBackup(filename){
       const existingIds = new Set((existing||[]).map(r=>r.id));
       const toInsert = rows.filter(r => !existingIds.has(r.id));
       if(toInsert.length){
-        // الـ users نضيف لها كلمة سر مؤقتة لأننا حذفناها من النسخة
+        // فرض company_id على كل صف (حماية أمنية)
+        toInsert.forEach(r => { r.company_id = myCompanyId; });
+        // للـ users: ولّد كلمة سر مؤقتة معروفة واحفظها كهاش
         if(table === 'users'){
-          toInsert.forEach(u => { if(!u.password) u.password = 'restore_'+Math.random().toString(36).slice(2,8); });
+          for(const u of toInsert){
+            const tempPass = Math.random().toString(36).slice(2,10);
+            const {hash, salt} = await hashPassword(tempPass);
+            u.password_hash = hash;
+            u.password_salt = salt;
+            u.password = null;
+            tempPasswords.push({email: u.email||u.username, pass: tempPass});
+          }
         }
         // إدراج على دفعات
         const chunk = 50;
@@ -2289,15 +2376,24 @@ async function restoreBackup(filename){
     await restoreIfMissing('group_files', backup.data.group_files, 'files');
 
     // إعادة تحميل البيانات
-    await loadCompanyData();
-    alert('تمت الاستعادة بنجاح ✓\n\n'+
+    await loadCompanyData(true);
+    let summary = 'تمت الاستعادة بنجاح ✓\n\n'+
       'مستخدمين: '+stats.users+'\n'+
       'قوالب: '+stats.templates+'\n'+
       'مجموعات: '+stats.groups+'\n'+
       'أعضاء: '+stats.members+'\n'+
       'رسائل: '+stats.messages+'\n'+
-      'ملفات: '+stats.files+'\n\n'+
-      (stats.users>0 ? 'ملاحظة: المستخدمون المُستعادون عندهم كلمات سر مؤقتة. اطلب من المدير إعادة تعيينها.' : ''));
+      'ملفات: '+stats.files;
+    if(tempPasswords.length){
+      summary += '\n\nكلمات السر المؤقتة للمستخدمين المُستعادين:\n';
+      tempPasswords.forEach(t => { summary += `\n${t.email}: ${t.pass}`; });
+      summary += '\n\n⚠️ احفظ هذه القائمة وأبلغهم. سيُطلب منهم تغييرها.';
+      // انسخها للحافظة تلقائياً
+      if(navigator.clipboard){
+        navigator.clipboard.writeText(summary).catch(()=>{});
+      }
+    }
+    alert(summary);
     apTab('backups', document.querySelector('.aptab.active'));
   }catch(e){
     console.error('restore error',e);
