@@ -2500,51 +2500,86 @@ function renderSuperAdmin(){
 }
 
 async function createCompany(){
-  const name = document.getElementById('co-name').value.trim();
-  const slug = document.getElementById('co-slug').value.trim().toLowerCase().replace(/[^a-z0-9-]/g,'');
-  const adminName = document.getElementById('co-adm-n').value.trim();
-  const adminEmail = document.getElementById('co-adm-e').value.trim();
-  const adminPass = document.getElementById('co-adm-p').value.trim();
-  if(!name||!slug||!adminName||!adminEmail||!adminPass){
-    document.getElementById('cocb').style.display='block';
-    document.getElementById('cocb').textContent = 'كل الحقول مطلوبة';
-    return;
+  const cocb = document.getElementById('cocb');
+  const showMsg = (m, ok)=>{ cocb.style.display='block'; cocb.textContent=m; cocb.style.color = ok ? '#155724' : '#dc3545'; };
+
+  // قراءة الحقول
+  const name = (document.getElementById('co-name').value||'').trim();
+  let slugRaw = (document.getElementById('co-slug').value||'').trim();
+  const adminName = (document.getElementById('co-adm-n').value||'').trim();
+  const adminEmail = (document.getElementById('co-adm-e').value||'').trim();
+  const adminPass = (document.getElementById('co-adm-p').value||'').trim();
+
+  // تحقق محدد لكل حقل (رسالة واضحة)
+  if(!name){ showMsg('⚠️ أدخل اسم الشركة'); return; }
+  if(!adminName){ showMsg('⚠️ أدخل اسم المدير'); return; }
+  if(!adminEmail){ showMsg('⚠️ أدخل إيميل المدير'); return; }
+  if(!adminPass){ showMsg('⚠️ أدخل كلمة سر المدير'); return; }
+
+  // الـ slug: نقبل أحرف وأرقام وشرطات. لو فاضي بعد التنظيف، نولّده من الإيميل
+  let slug = slugRaw.toLowerCase().replace(/[^a-z0-9-]/g,'');
+  if(!slug){
+    // ولّد من الإيميل قبل @
+    slug = (adminEmail.split('@')[0]||'').toLowerCase().replace(/[^a-z0-9-]/g,'');
+    if(!slug) slug = 'co'+Math.random().toString(36).slice(2,7);
   }
+
   let createdCompanyId = null;
   let createdUserId = null;
+  showMsg('جاري الإنشاء...', true);
   try{
+    // 1) إنشاء الشركة
     const co = await sbPost('companies', {name, slug, is_active:true});
-    if(!co || !co[0]) throw new Error('فشل إنشاء الشركة');
+    if(!Array.isArray(co) || !co[0] || !co[0].id) throw new Error('لم تُرجع DB معرّف الشركة');
     createdCompanyId = co[0].id;
-    const cid = createdCompanyId;
-    const {hash, salt}=await hashPassword(adminPass);
+
+    // 2) تشفير كلمة السر وإنشاء المدير
+    const {hash, salt} = await hashPassword(adminPass);
     const adm = await sbPost('users', {
-      company_id:cid, name:adminName, role:'admin',
-      email:adminEmail, password:'__hashed__', password_hash:hash, password_salt:salt, color:'#075E54'
+      company_id: createdCompanyId, name: adminName, role: 'admin',
+      email: adminEmail, password: '__hashed__',
+      password_hash: hash, password_salt: salt, color: '#075E54'
     });
-    if(!adm || !adm[0]) throw new Error('فشل إنشاء المدير');
+    if(!Array.isArray(adm) || !adm[0] || !adm[0].id) throw new Error('لم تُرجع DB معرّف المدير');
     createdUserId = adm[0].id;
-    // قالب افتراضي للشركة
-    await sbPost('templates', {company_id:cid, name:'قالب مخصص', sections:['عام']});
-    document.getElementById('cocb').style.display='block';
-    document.getElementById('cocb').innerHTML = `تم إنشاء الشركة بنجاح ✓<br>
+
+    // 3) قالب افتراضي (غير حرج — لو فشل، نتجاهل)
+    try{
+      await sbPost('templates', {company_id: createdCompanyId, name: 'قالب مخصص', sections: ['عام']});
+    }catch(tplErr){ console.warn('template creation failed (non-critical)', tplErr); }
+
+    // 4) عرض النجاح
+    cocb.style.display='block';
+    cocb.style.color='';
+    cocb.innerHTML = `تم إنشاء الشركة بنجاح ✓<br>
       <div style="margin-top:6px;padding:8px;background:#fff;border-radius:6px;border:1px solid #ddd;font-size:13px;line-height:1.7;">
-        كود الشركة: <b style="color:#075E54;font-size:15px;">${slug}</b><br>
-        إيميل المدير: <b>${adminEmail}</b><br>
-        كلمة السر: <b>${adminPass}</b>
+        كود الشركة: <b style="color:#075E54;font-size:15px;">${esc(slug)}</b><br>
+        إيميل المدير: <b>${esc(adminEmail)}</b><br>
+        كلمة السر: <b>${esc(adminPass)}</b>
       </div>
-      <div style="margin-top:6px;font-size:11px;color:#666;">⚠️ المدير يحتاج هذه البيانات للدخول — انسخها وأرسلها له</div>`;
-    document.getElementById('co-name').value='';
-    document.getElementById('co-slug').value='';
-    document.getElementById('co-adm-n').value='';
-    document.getElementById('co-adm-e').value='';
-    document.getElementById('co-adm-p').value='';
-    await loadSuperAdminData();
+      <div style="margin-top:6px;font-size:11px;color:#666;">⚠️ المدير يحتاج هذه البيانات للدخول</div>`;
+
+    // 5) تفريغ الحقول
+    ['co-name','co-slug','co-adm-n','co-adm-e','co-adm-p'].forEach(id=>{
+      const el = document.getElementById(id);
+      if(el) el.value='';
+    });
+
+    // 6) إعادة تحميل قائمة الشركات + إضافة الشركة الجديدة للحالة فوراً
+    if(!allCompanies.some(c=>c.id===createdCompanyId)){
+      allCompanies.unshift(co[0]);
+    }
+    if(!allUsers.some(u=>u.id===createdUserId)){
+      allUsers.unshift(adm[0]);
+    }
     renderSuperAdmin();
-    showToast('تم إنشاء الشركة');
+    // في الخلفية: تحميل كامل لضمان التطابق
+    loadSuperAdminData().then(()=>renderSuperAdmin()).catch(()=>{});
+    showToast('تم إنشاء الشركة ✓');
+
   }catch(e){
-    console.error(e);
-    // Rollback: احذف ما تم إنشاؤه عشان ما تبقى بيانات يتيمة
+    console.error('createCompany error',e);
+    // Rollback: احذف ما تم إنشاؤه
     if(createdUserId){
       try{ await sbDelete('users', 'id=eq.'+createdUserId); }catch(re){console.warn('rollback user',re);}
     }
@@ -2553,14 +2588,15 @@ async function createCompany(){
     }
     let msg = 'فشل الإنشاء';
     if(e.code === '23505' && (e.details||'').includes('slug')){
-      msg = '⚠️ كود الشركة "' + slug + '" مستخدم بالفعل. اختر كوداً آخر.';
+      msg = '⚠️ كود الشركة "'+slug+'" مستخدم بالفعل. اختر كوداً آخر.';
     } else if(e.code === '23505' && (e.details||'').includes('email')){
-      msg = '⚠️ إيميل المدير مستخدم بالفعل في النظام.';
+      msg = '⚠️ إيميل المدير مستخدم بالفعل.';
+    } else if(e.code === '23505' && (e.details||'').includes('username')){
+      msg = '⚠️ هذا الاسم مستخدم بالفعل.';
     } else if(e.message){
-      msg = 'فشل الإنشاء: ' + e.message;
+      msg = 'فشل الإنشاء: '+e.message;
     }
-    document.getElementById('cocb').style.display='block';
-    document.getElementById('cocb').textContent = msg;
+    showMsg(msg);
   }
 }
 

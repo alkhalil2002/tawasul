@@ -1,5 +1,5 @@
-// Service Worker — Cache-first strategy for instant loads
-const CACHE = 'tawasul-v3';
+// Service Worker — Network-first for HTML (fresh content), cache-first for assets
+const CACHE = 'tawasul-v4';
 const ASSETS = ['/', '/index.html', '/icon-192.png', '/icon-512.png', '/manifest.json'];
 
 // تثبيت: اعمل cache فوري للأصول الأساسية
@@ -38,19 +38,34 @@ self.addEventListener('fetch', e => {
   // طلبات GET فقط
   if (e.request.method !== 'GET') return;
 
-  // Cache-first: نرجع من cache فوراً، ونحدّث في الخلفية (stale-while-revalidate)
+  const isHTML = e.request.mode === 'navigate' ||
+                 (e.request.headers.get('accept')||'').includes('text/html') ||
+                 url.endsWith('/') || url.endsWith('/index.html');
+
+  if (isHTML) {
+    // HTML: network-first — يضمن أن المستخدم يأخذ آخر نسخة دائماً
+    e.respondWith(
+      fetch(e.request).then(resp => {
+        if (resp && resp.status === 200) {
+          const copy = resp.clone();
+          caches.open(CACHE).then(c => c.put(e.request, copy).catch(()=>{}));
+        }
+        return resp;
+      }).catch(() => caches.match(e.request).then(c => c || caches.match('/index.html')))
+    );
+    return;
+  }
+
+  // باقي الأصول (CSS/JS/PNG): cache-first مع تحديث في الخلفية
   e.respondWith(
     caches.open(CACHE).then(cache =>
       cache.match(e.request).then(cached => {
-        // حدّث في الخلفية لو موجود
         const fetchAndCache = fetch(e.request).then(resp => {
           if (resp && resp.status === 200 && resp.type === 'basic') {
             cache.put(e.request, resp.clone()).catch(()=>{});
           }
           return resp;
         }).catch(() => cached);
-
-        // ارجع cache فوراً لو موجود، وإلا انتظر الـ fetch
         return cached || fetchAndCache;
       })
     )
