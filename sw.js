@@ -1,5 +1,5 @@
 // Service Worker — Cache-first strategy for instant loads
-const CACHE = 'tawasul-v2';
+const CACHE = 'tawasul-v3';
 const ASSETS = ['/', '/index.html', '/icon-192.png', '/icon-512.png', '/manifest.json'];
 
 // تثبيت: اعمل cache فوري للأصول الأساسية
