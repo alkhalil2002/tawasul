@@ -684,6 +684,15 @@ async function sbGet(table, query=''){
 }
 async function sbPost(table, data){
   const r = await fetch(`${SUPA_URL}/rest/v1/${table}`, {method:'POST', headers:H, body:JSON.stringify(data)});
+  if(!r.ok){
+    let err;
+    try{ err = await r.json(); }catch(e){ err = {message:'HTTP '+r.status}; }
+    const error = new Error(err.message || ('HTTP '+r.status));
+    error.details = err.details;
+    error.code = err.code;
+    error.hint = err.hint;
+    throw error;
+  }
   return r.json();
 }
 async function sbPatch(table, query, data){
@@ -2531,8 +2540,16 @@ async function createCompany(){
     showToast('تم إنشاء الشركة');
   }catch(e){
     console.error(e);
+    let msg = 'فشل الإنشاء';
+    if(e.code === '23505' && (e.details||'').includes('slug')){
+      msg = '⚠️ كود الشركة "' + slug + '" مستخدم بالفعل. اختر كوداً آخر.';
+    } else if(e.code === '23505' && (e.details||'').includes('email')){
+      msg = '⚠️ إيميل المدير مستخدم بالفعل في النظام.';
+    } else if(e.message){
+      msg = 'فشل الإنشاء: ' + e.message;
+    }
     document.getElementById('cocb').style.display='block';
-    document.getElementById('cocb').textContent = 'فشل الإنشاء: ' + (e.message || 'تأكد أن المعرّف غير مستخدم');
+    document.getElementById('cocb').textContent = msg;
   }
 }
 
