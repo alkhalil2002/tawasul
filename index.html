@@ -972,6 +972,7 @@ async function boot(){
         if(Array.isArray(u)&&u[0]){
           me=u[0];
           myCompanyId=me.company_id;
+          setupPush();
           if(me.role==='super_admin'){
             await loadSuperAdminData();
             showSc('superadmin');
@@ -1115,6 +1116,70 @@ async function loadLastMessages(){
   } catch(e){}
 }
 
+// ==============================
+// PUSH NOTIFICATIONS (iOS Bridge)
+// ==============================
+const _isIOSApp = !!(window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers['push-permission-request']);
+
+function setupPush(){
+  if(!_isIOSApp || !me) return;
+  try{
+    window.webkit.messageHandlers['push-permission-request'].postMessage('');
+  }catch(e){}
+}
+
+window.addEventListener('push-permission-request', (e)=>{
+  if(e.detail === 'granted' && _isIOSApp){
+    try{ window.webkit.messageHandlers['push-token'].postMessage(''); }catch(err){}
+  }
+});
+
+window.addEventListener('push-token', async (e)=>{
+  const token = e.detail;
+  if(!me || !token || token === 'ERROR GET TOKEN') return;
+  try{
+    await sbPatch('users', 'id=eq.'+me.id, {push_token: token});
+  }catch(err){}
+});
+
+window.addEventListener('push-notification-click', (e)=>{
+  try{
+    const data = e.detail;
+    const chatId = data && (data.chat_id || data.group_id || data.from_user);
+    const chatType = (data && data.group_id) ? 'group' : 'dm';
+    if(chatId && typeof openChat === 'function') openChat(chatId, chatType);
+  }catch(err){}
+});
+
+async function clearPushToken(){
+  if(!_isIOSApp || !me) return;
+  try{ await sbPatch('users', 'id=eq.'+me.id, {push_token: null}); }catch(e){}
+}
+
+async function sendPushNotification(messageData){
+  try{
+    if(!messageData) return;
+    const senderName = (me && (me.name || me.username)) || 'مستخدم';
+    const body = messageData.text || (messageData.file_name ? '📎 ' + messageData.file_name : 'رسالة جديدة');
+    fetch(SUPA_URL + '/functions/v1/send-push', {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer ' + SUPA_KEY,
+        'apikey': SUPA_KEY,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        to_user: messageData.to_user || null,
+        group_id: messageData.group_id || null,
+        company_id: myCompanyId,
+        sender_id: me ? me.id : null,
+        title: senderName,
+        body: body
+      })
+    }).catch(()=>{});
+  }catch(e){}
+}
+
 async function doLogin(){
   const btn=document.getElementById('lbtn');
   const errEl=document.getElementById('lerr');
@@ -1175,6 +1240,8 @@ async function doLogin(){
   }
   me=u;
   myCompanyId=u.company_id;
+  // تفعيل Push Notifications (iOS فقط)
+  setupPush();
   // حفظ الجلسة + كود الشركة لتعبئته تلقائياً المرة القادمة
   try{
     localStorage.setItem('tawasul_session', JSON.stringify({user_id:u.id, company_id:u.company_id}));
@@ -1214,6 +1281,8 @@ async function doLogout(){
   try{closeMsgMenu();}catch(e){}
   try{cancelReply();}catch(e){}
   try{cancelEdit();}catch(e){}
+  // امسح push token قبل تصفير الجلسة
+  try{await clearPushToken();}catch(e){}
   // صفّر كل بيانات الجلسة
   me=null;curChat=null;myCompanyId=null;ct='dm';
   allUsers=[];allGroups=[];allTemplates=[];allCompanies=[];
@@ -1569,6 +1638,7 @@ async function sendMsg(){
   if(replyingTo) data.reply_to_id = replyingTo.id;
   // أرسل في الخلفية بدون await — يحافظ على الـ focus
   sbPost('messages',data).then(()=>{
+    sendPushNotification(data);
     loadMessages().then(()=>{
       if(document.activeElement!==inp) inp.focus();
     });
