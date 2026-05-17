@@ -106,6 +106,12 @@ svg{display:inline-block;vertical-align:middle;flex-shrink:0;}
 .arch-banner{padding:8px 14px;background:#fff3cd;border-bottom:1px solid #ffe69c;font-size:12px;color:#856404;display:flex;align-items:center;gap:8px;}
 .arch-banner svg{flex-shrink:0;}
 
+/* طلب جديد — اختيار النوع */
+.req-type-card{padding:12px 8px;border:1.5px solid var(--bd);border-radius:12px;background:#fff;cursor:pointer;text-align:center;font-size:12px;font-weight:600;color:var(--t);transition:all .15s;display:flex;flex-direction:column;align-items:center;gap:4px;}
+.req-type-card:hover{border-color:var(--bp);background:#f7fbf9;}
+.req-type-card.sel{border-color:var(--bp);background:#e8f5e9;color:var(--bp);}
+.req-type-card .ico{font-size:20px;}
+
 /* تقييم العميل */
 .rating-banner{margin:10px;padding:14px;background:linear-gradient(135deg,#fff8e7,#fff3cd);border:1px solid #f0d878;border-radius:14px;text-align:center;}
 .rating-banner .rt-title{font-size:13px;font-weight:700;color:#856404;margin-bottom:8px;}
@@ -535,6 +541,9 @@ textarea.fi{resize:none;font-family:inherit;}
     <button class="fab" id="fab-btn" onclick="openNewGroup()" style="display:none;" title="مجموعة جديدة">
       <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
     </button>
+    <button class="fab" id="new-req-btn" onclick="openNewRequestModal()" style="display:none;background:linear-gradient(135deg,#25D366,#128C7E);" title="طلب جديد">
+      <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
+    </button>
   </div>
 
   <div class="carea">
@@ -777,6 +786,28 @@ textarea.fi{resize:none;font-family:inherit;}
 
 <!-- ================== MESSAGE ACTION MENU ================== -->
 <div id="msg-menu" style="display:none;"></div>
+
+<!-- ================== NEW REQUEST (طلب جديد للعميل) ================== -->
+<div class="mbg" id="new-req-modal">
+  <div class="modal" onclick="event.stopPropagation()" style="max-width:440px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;">
+      <div class="mtitle">📋 طلب جديد</div>
+      <button onclick="document.getElementById('new-req-modal').classList.remove('open')" style="background:none;border:none;cursor:pointer;padding:0;"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#666" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+    </div>
+    <div style="font-size:13px;color:var(--t2);margin-bottom:14px;">اختر نوع طلبك واكتب التفاصيل — سيتم تحويلك لموظف خدمة العملاء فوراً.</div>
+
+    <div class="field"><label>نوع الطلب</label>
+      <div id="req-type-list" style="display:grid;grid-template-columns:repeat(2,1fr);gap:6px;"></div>
+    </div>
+
+    <div class="field"><label>وصف الطلب</label>
+      <textarea class="fi" id="req-body" placeholder="اشرح طلبك بالتفصيل..." style="min-height:100px;resize:vertical;" maxlength="1000"></textarea>
+    </div>
+
+    <button class="mbtn" id="req-submit-btn" onclick="submitNewRequest()">إرسال الطلب</button>
+    <button class="mcanc" onclick="document.getElementById('new-req-modal').classList.remove('open')">إلغاء</button>
+  </div>
+</div>
 
 <!-- ================== MEMBERS MODAL (إدارة أعضاء المجموعة) ================== -->
 <div class="mbg" id="members-modal">
@@ -1838,6 +1869,110 @@ function highlightSearchHit(mid){
 }
 
 // ==============================
+// NEW REQUEST (طلب جديد للعميل)
+// ==============================
+const REQ_TYPES = [
+  {key:'استفسار', ico:'❓'},
+  {key:'طلب جديد', ico:'📝'},
+  {key:'شكوى', ico:'⚠️'},
+  {key:'متابعة', ico:'🔄'},
+  {key:'دعم فني', ico:'🛠️'},
+  {key:'أخرى', ico:'💬'},
+];
+let _selReqType = null;
+
+function updateNewRequestBtn(){
+  const btn=document.getElementById('new-req-btn');
+  if(!btn) return;
+  btn.style.display = (me && me.role==='client') ? '' : 'none';
+}
+
+function openNewRequestModal(){
+  if(!me || me.role!=='client'){ showToast('هذه الميزة للعملاء فقط'); return; }
+  _selReqType = REQ_TYPES[0].key; // افتراضياً: استفسار
+  document.getElementById('req-body').value = '';
+  renderReqTypes();
+  document.getElementById('new-req-modal').classList.add('open');
+}
+
+function renderReqTypes(){
+  const c = document.getElementById('req-type-list');
+  if(!c) return;
+  c.innerHTML = REQ_TYPES.map(t=>`
+    <div class="req-type-card ${_selReqType===t.key?'sel':''}" onclick="selReqType('${esc(t.key)}')">
+      <span class="ico">${t.ico}</span>
+      <span>${esc(t.key)}</span>
+    </div>`).join('');
+}
+
+function selReqType(k){
+  _selReqType = k;
+  renderReqTypes();
+}
+
+async function submitNewRequest(){
+  if(!me || me.role!=='client') return;
+  const body = (document.getElementById('req-body').value||'').trim();
+  if(!_selReqType){ showToast('اختر نوع الطلب'); return; }
+  if(!body){ showToast('اكتب وصف الطلب'); return; }
+
+  const btn = document.getElementById('req-submit-btn');
+  btn.disabled = true; btn.textContent = 'جاري الإرسال...';
+
+  try{
+    // 1) اختر موظفاً (round-robin: الأقل عدد تذاكر مفتوحة)
+    const staff = (allUsers||[]).filter(u=>(u.role==='employee'||u.role==='supervisor') && !u.is_blocked);
+    if(!staff.length){
+      showToast('لا يوجد موظفون متاحون حالياً');
+      btn.disabled=false; btn.textContent='إرسال الطلب';
+      return;
+    }
+    const counts = {};
+    (allTickets||[]).filter(t=>t.status!=='closed').forEach(t=>{
+      if(t.assigned_to) counts[t.assigned_to] = (counts[t.assigned_to]||0)+1;
+    });
+    staff.sort((a,b)=>(counts[a.id]||0)-(counts[b.id]||0));
+    const assigned = staff[0];
+
+    // 2) أنشئ التذكرة
+    const tkRow = await sbPost('tickets', {
+      client_id: me.id,
+      assigned_to: assigned.id,
+      company_id: myCompanyId,
+      status: 'open',
+      tag: _selReqType,
+      created_by: me.id
+    });
+    const ticket = Array.isArray(tkRow)?tkRow[0]:tkRow;
+    if(ticket && ticket.id) allTickets.unshift(ticket);
+
+    // 3) أرسل الرسالة الأولى في DM
+    const intro = `📋 طلب جديد · ${_selReqType}\n\n${body}`;
+    const msgData = {
+      from_user: me.id,
+      to_user: assigned.id,
+      company_id: myCompanyId,
+      text: intro,
+      type: 'text',
+      delivered: false,
+      read_at: null
+    };
+    await sbPost('messages', msgData);
+    sendPushNotification(msgData);
+    logAction('client_new_request','ticket', ticket?ticket.id:null, _selReqType+' → '+assigned.name);
+
+    // 4) أغلق modal وافتح المحادثة
+    document.getElementById('new-req-modal').classList.remove('open');
+    showToast(`تم إرسال طلبك إلى ${assigned.name} ✓`);
+    btn.disabled=false; btn.textContent='إرسال الطلب';
+    setTimeout(()=>openDM(assigned.id), 300);
+  }catch(e){
+    showToast('فشل إرسال الطلب');
+    btn.disabled=false; btn.textContent='إرسال الطلب';
+  }
+}
+
+// ==============================
 // GROUP MEMBERS MANAGEMENT (إدارة أعضاء المجموعة)
 // ==============================
 function canManageGroupMembers(g){
@@ -2645,6 +2780,8 @@ async function rMain(){
   document.getElementById('adm-btn').style.display=ca?'flex':'none';
   document.getElementById('grp-btn').style.display=ca?'flex':'none';
   document.getElementById('fab-btn').style.display=ca?'flex':'none';
+  // زر "طلب جديد" — للعميل فقط
+  document.getElementById('new-req-btn').style.display=me.role==='client'?'flex':'none';
   // نسخ احتياطي تلقائي يومي (في الخلفية، لا يعطل التطبيق)
   if(me.role==='admin'){
     setTimeout(()=>{ autoBackupIfNeeded(); }, 3000);
@@ -2704,10 +2841,15 @@ function renderChatList(filter){
       const t=lastMsgTime[u.id]||'';
       const uc=unreadCount[u.id]||0;
       const ucHtml=uc>0?`<span class="unread-badge">${uc>99?'99+':uc}</span>`:'';
-      // شارة حالة التذكرة (لو العميل وعندي صلاحيات staff)
+      // شارة حالة التذكرة
       let tkBadge='';
       if(me && me.role!=='client' && u.role==='client'){
+        // الموظف يشوف تذكرة العميل
         const t2 = getLatestTicketForClient(u.id);
+        if(t2){ tkBadge = ` <span class="tk-status ${t2.status}" style="font-size:9px;padding:2px 6px;">${TK_STATUS_LABEL[t2.status]||''}</span>`; }
+      } else if(me && me.role==='client' && u.role!=='client'){
+        // العميل يشوف تذكرته مع الموظف
+        const t2 = (allTickets||[]).find(t=>t.client_id===me.id && t.assigned_to===u.id);
         if(t2){ tkBadge = ` <span class="tk-status ${t2.status}" style="font-size:9px;padding:2px 6px;">${TK_STATUS_LABEL[t2.status]||''}</span>`; }
       }
       return`<div class="ci" onclick="openDM('${esc(u.id)}')" id="ci-${esc(u.id)}">
