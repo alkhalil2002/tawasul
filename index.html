@@ -836,7 +836,7 @@ function disconnectRealtime(){
 // ==============================
 let me = null, curChat = null, ct = 'dm', lt = 'staff';
 let myCompanyId = null;
-let allUsers = [], allGroups = [], allTemplates = [], allCompanies = [], allCannedResponses = [], settings = {work_start:8, work_end:17, work_days:[0,1,2,3,4]};
+let allUsers = [], allGroups = [], allTemplates = [], allCompanies = [], allCannedResponses = [], myCompany = null, settings = {work_start:8, work_end:17, work_days:[0,1,2,3,4]};
 let msgTimeCache = {}, lastMsgPreview = {}, lastMsgTime = {}, unreadCount = {};
 let selMembers = [], selTpl = null, cs = [], cfs = null, nts = [];
 let showFiles = false, msgCache = {};
@@ -1039,6 +1039,7 @@ async function loadCompanyData(forceRefresh=false){
         if(c.groups)allGroups=c.groups;
         if(c.templates)allTemplates=c.templates;
         if(c.canned)allCannedResponses=c.canned;
+        if(c.company)myCompany=c.company;
         if(c.settings)settings=c.settings;
         cacheUsed = true;
       }
@@ -1048,18 +1049,20 @@ async function loadCompanyData(forceRefresh=false){
   // 2) جلب من الشبكة (في الخلفية لو cache كان موجود)
   const fetchAll = async () => {
     try{
-      const [u,g,t,s,cr] = await Promise.all([
+      const [u,g,t,s,cr,co] = await Promise.all([
         sbGet('users',_cq('order=created_at')),
         sbGet('groups',_cq('order=created_at')),
         sbGet('templates',_cq('order=created_at')),
         sbGet('settings','id=eq.1'),
-        sbGet('canned_responses',_cq('order=created_at'))
+        sbGet('canned_responses',_cq('order=created_at')),
+        sbGet('companies','id=eq.'+myCompanyId)
       ]);
       if(Array.isArray(u)) allUsers=u;
       if(Array.isArray(g)) allGroups=g;
       if(Array.isArray(t)) allTemplates=t;
       if(s&&s[0]) settings=s[0];
       if(Array.isArray(cr)) allCannedResponses=cr;
+      if(Array.isArray(co)&&co[0]) myCompany=co[0];
       await Promise.all(allGroups.map(async gr=>{
         try{
           const mems=await sbGet('group_members',`group_id=eq.${gr.id}&select=user_id`);
@@ -1068,7 +1071,7 @@ async function loadCompanyData(forceRefresh=false){
       }));
       try{
         localStorage.setItem('tawasul_cache_'+myCompanyId, JSON.stringify({
-          users:allUsers, groups:allGroups, templates:allTemplates, canned:allCannedResponses, settings, ts:Date.now()
+          users:allUsers, groups:allGroups, templates:allTemplates, canned:allCannedResponses, company:myCompany, settings, ts:Date.now()
         }));
       }catch(e){}
       // أعد رسم القائمة لو المستخدم في الشاشة الرئيسية
@@ -1144,6 +1147,43 @@ async function loadLastMessages(){
       }
     });
   } catch(e){}
+}
+
+// ==============================
+// AWAY AUTO-REPLY (رد تلقائي خارج الدوام)
+// ==============================
+// مفتاح بسيط لمنع تكرار الرد لنفس المحادثة في فترة قصيرة
+const _awayReplyCache = {};
+
+async function maybeSendAwayReply(sentData){
+  try{
+    if(!me || me.role !== 'client') return;            // فقط لما العميل يبعث
+    if(!sentData || !sentData.to_user) return;          // DM فقط (مو group)
+    if(!myCompany || !myCompany.away_enabled) return;   // الميزة معطّلة
+    const msg = (myCompany.away_message||'').trim();
+    if(!msg) return;
+    if(!isOutsideWorkHoursNow()) return;                // داخل الدوام
+
+    // امنع تكرار الرد لنفس الموظف خلال 10 دقائق
+    const key = sentData.to_user;
+    const last = _awayReplyCache[key] || 0;
+    const now = Date.now();
+    if(now - last < 10 * 60 * 1000) return;
+    _awayReplyCache[key] = now;
+
+    const autoData = {
+      from_user: sentData.to_user,   // الرد يأتي "باسم" الموظف المستهدف
+      to_user: me.id,                 // للعميل
+      company_id: myCompanyId,
+      text: '🤖 ' + msg,
+      type: 'text',
+      delivered: false,
+      read_at: null,
+      file_url: null,
+      file_name: null
+    };
+    await sbPost('messages', autoData);
+  }catch(e){}
 }
 
 // ==============================
@@ -1398,6 +1438,7 @@ async function doLogin(){
       if(c.groups)allGroups=c.groups;
       if(c.templates)allTemplates=c.templates;
       if(c.canned)allCannedResponses=c.canned;
+      if(c.company)myCompany=c.company;
       if(c.settings)settings=c.settings;
     }
   }catch(e){}
@@ -1428,7 +1469,7 @@ async function doLogout(){
   try{await clearPushToken();}catch(e){}
   // صفّر كل بيانات الجلسة
   me=null;curChat=null;myCompanyId=null;ct='dm';
-  allUsers=[];allGroups=[];allTemplates=[];allCompanies=[];allCannedResponses=[];
+  allUsers=[];allGroups=[];allTemplates=[];allCompanies=[];allCannedResponses=[];myCompany=null;
   settings={work_start:8, work_end:17, work_days:[0,1,2,3,4]};
   msgTimeCache={};lastMsgPreview={};lastMsgTime={};unreadCount={};
   msgCache={};lastMsgs=[];
@@ -1782,6 +1823,7 @@ async function sendMsg(){
   // أرسل في الخلفية بدون await — يحافظ على الـ focus
   sbPost('messages',data).then(()=>{
     sendPushNotification(data);
+    maybeSendAwayReply(data);
     loadMessages().then(()=>{
       if(document.activeElement!==inp) inp.focus();
     });
@@ -2283,6 +2325,22 @@ async function apTab(tab,el){
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#666" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><circle cx="12" cy="12" r="9"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
         تطبق على جميع المجموعات التي ليس لها اوقات مخصصة
       </div>
+
+      <div style="margin-top:18px;padding-top:14px;border-top:1px solid var(--bd);">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+          <div style="font-size:13px;font-weight:700;color:var(--t);">🤖 رد تلقائي خارج الدوام</div>
+          <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--t2);cursor:pointer;">
+            <input type="checkbox" id="aw-en" ${myCompany&&myCompany.away_enabled?'checked':''} style="accent-color:#075E54;width:16px;height:16px;"/>
+            <span>تفعيل</span>
+          </label>
+        </div>
+        <textarea id="aw-msg" placeholder="مثال: شكراً لتواصلك معنا. نعتذر، نحن خارج أوقات الدوام حالياً. سنرد عليك في أقرب وقت ممكن خلال ساعات العمل." style="width:100%;padding:10px;border:1px solid var(--bd);border-radius:10px;font-size:13px;font-family:inherit;min-height:80px;resize:vertical;box-sizing:border-box;color:var(--t);" maxlength="500">${myCompany&&myCompany.away_message?esc(myCompany.away_message):''}</textarea>
+        <button class="fsub" style="margin-top:8px;" onclick="saveAwayMessage()">حفظ الرسالة</button>
+        <div class="inote" style="margin-top:6px;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#666" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><circle cx="12" cy="12" r="9"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          ترسل تلقائياً للعميل لما يبعث لموظف خارج وقت الدوام
+        </div>
+      </div>
       <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--bd);text-align:center;">
         <div style="font-size:11px;color:var(--t3);font-weight:600;letter-spacing:1px;">TAWASOL</div>
         <div style="font-size:13px;color:var(--t2);margin-top:4px;" id="version-display">الإصدار 1.5.0</div>
@@ -2310,6 +2368,32 @@ async function saveSettings(){
     work_days:settings.work_days
   });
   showToast('تم حفظ أوقات الدوام');
+}
+
+async function saveAwayMessage(){
+  if(!myCompany){showToast('لم يتم تحميل بيانات الشركة');return;}
+  const en=document.getElementById('aw-en').checked;
+  const msg=(document.getElementById('aw-msg').value||'').trim();
+  if(en && !msg){showToast('اكتب نص الرسالة أولاً');return;}
+  try{
+    const r = await sbPatch('companies','id=eq.'+myCompany.id,{
+      away_enabled: en,
+      away_message: msg || null
+    });
+    if(Array.isArray(r)&&r[0]) myCompany=r[0];
+    else { myCompany.away_enabled=en; myCompany.away_message=msg||null; }
+    showToast(en?'تم تفعيل الرد التلقائي':'تم حفظ الإعدادات');
+  }catch(e){ showToast('فشل الحفظ'); }
+}
+
+// هل الوقت الحالي خارج دوام الشركة؟
+function isOutsideWorkHoursNow(){
+  const now=new Date();
+  const h=now.getHours();
+  const day=now.getDay();
+  const workDays=settings.work_days||[0,1,2,3,4];
+  if(!workDays.includes(day)) return true;
+  return h<settings.work_start || h>=settings.work_end;
 }
 
 let editTplId=null, editTplSecs=[];
