@@ -106,6 +106,16 @@ svg{display:inline-block;vertical-align:middle;flex-shrink:0;}
 .arch-banner{padding:8px 14px;background:#fff3cd;border-bottom:1px solid #ffe69c;font-size:12px;color:#856404;display:flex;align-items:center;gap:8px;}
 .arch-banner svg{flex-shrink:0;}
 
+/* ملف العميل */
+.cp-tabs{display:flex;gap:0;border-bottom:1px solid var(--bd);margin:10px -4px 12px;}
+.cp-tab{padding:9px 16px;cursor:pointer;font-size:13px;color:var(--t2);border-bottom:2px solid transparent;font-weight:600;transition:color .15s,border-color .15s;}
+.cp-tab.active{color:var(--bp);border-bottom-color:var(--bp);}
+.cn-list{max-height:280px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;margin-bottom:10px;}
+.cn-item{padding:10px 12px;background:#f7f9fa;border:1px solid #e8eaeb;border-radius:10px;font-size:13px;color:var(--t);}
+.cn-meta{display:flex;justify-content:space-between;align-items:center;margin-top:6px;font-size:11px;color:var(--t3);}
+.cn-del{background:none;border:none;color:#c33;cursor:pointer;padding:2px 4px;}
+.cn-empty{padding:24px;text-align:center;color:var(--t3);font-size:13px;}
+
 /* الردود الجاهزة */
 .canned-sheet{display:none;background:#fff;border-top:1px solid var(--bd);max-height:280px;overflow-y:auto;}
 .canned-sheet.open{display:block;}
@@ -522,6 +532,9 @@ textarea.fi{resize:none;font-family:inherit;}
           <button id="arch-chat-btn" onclick="toggleArchiveCurrent()" title="أرشفة المحادثة">
             <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.85)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/></svg>
           </button>
+          <button id="client-profile-btn" onclick="openClientProfile()" style="display:none;" title="ملف العميل">
+            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.85)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+          </button>
         </div>
       </div>
       <div class="search-bar" id="search-bar">
@@ -720,6 +733,21 @@ textarea.fi{resize:none;font-family:inherit;}
 
 <!-- ================== MESSAGE ACTION MENU ================== -->
 <div id="msg-menu" style="display:none;"></div>
+
+<!-- ================== CLIENT PROFILE MODAL ================== -->
+<div class="mbg" id="client-profile-modal">
+  <div class="modal" onclick="event.stopPropagation()" style="max-width:480px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;">
+      <div class="mtitle">ملف العميل</div>
+      <button onclick="closeClientProfile()" style="background:none;border:none;cursor:pointer;padding:0;"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#666" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+    </div>
+    <div class="cp-tabs">
+      <div class="cp-tab active" id="cp-tab-info" onclick="cpTab('info')">المعلومات</div>
+      <div class="cp-tab" id="cp-tab-notes" onclick="cpTab('notes')">ملاحظات داخلية</div>
+    </div>
+    <div id="cp-body"></div>
+  </div>
+</div>
 
 <!-- ================== EDIT COMPANY MODAL ================== -->
 <div class="mbg" id="editco-modal">
@@ -1186,6 +1214,148 @@ async function loadLastMessages(){
       }
     });
   } catch(e){}
+}
+
+// ==============================
+// CLIENT PROFILE (ملف العميل + ملاحظات داخلية)
+// ==============================
+let _cpClientId = null;
+let _cpNotes = [];
+let _cpActiveTab = 'info';
+
+function canSeeClientProfile(){
+  return me && me.role!=='client' && ct==='dm' && curChat;
+}
+function updateClientProfileBtn(){
+  const btn=document.getElementById('client-profile-btn');
+  if(!btn) return;
+  let show=false;
+  if(me && me.role!=='client' && ct==='dm' && curChat){
+    const u = allUsers.find(x=>x.id===curChat);
+    if(u && u.role==='client') show=true;
+  }
+  btn.style.display = show ? '' : 'none';
+}
+
+async function openClientProfile(){
+  if(!canSeeClientProfile()) return;
+  const u = allUsers.find(x=>x.id===curChat);
+  if(!u || u.role!=='client') return;
+  _cpClientId = u.id;
+  _cpActiveTab = 'info';
+  document.getElementById('cp-tab-info').classList.add('active');
+  document.getElementById('cp-tab-notes').classList.remove('active');
+  renderClientProfileInfo();
+  document.getElementById('client-profile-modal').classList.add('open');
+}
+
+function closeClientProfile(){
+  document.getElementById('client-profile-modal').classList.remove('open');
+  _cpClientId = null;
+}
+
+function cpTab(name){
+  _cpActiveTab = name;
+  document.getElementById('cp-tab-info').classList.toggle('active', name==='info');
+  document.getElementById('cp-tab-notes').classList.toggle('active', name==='notes');
+  if(name==='info') renderClientProfileInfo();
+  else renderClientProfileNotes();
+}
+
+function renderClientProfileInfo(){
+  const u = allUsers.find(x=>x.id===_cpClientId);
+  if(!u) return;
+  const b=document.getElementById('cp-body');
+  b.innerHTML = `
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;">
+      ${avE(u,52)}
+      <div>
+        <div style="font-size:15px;font-weight:700;color:var(--t);">${esc(u.name||'')}</div>
+        <div style="font-size:12px;color:var(--t2);">@${esc(u.username||'—')}</div>
+      </div>
+    </div>
+    <div class="field"><label>اسم الشركة</label><input class="fi" type="text" id="cp-company" value="${esc(u.company_name||'')}" placeholder="اسم الجهة/الشركة"/></div>
+    <div class="field"><label>الجوال</label><input class="fi" type="tel" id="cp-phone" value="${esc(u.phone||'')}" placeholder="05XXXXXXXX" dir="ltr"/></div>
+    <div class="field"><label>العنوان</label><input class="fi" type="text" id="cp-address" value="${esc(u.address||'')}" placeholder="المدينة، الحي، الشارع"/></div>
+    <div class="field"><label>ملاحظات عامة</label><textarea class="fi" id="cp-notes" placeholder="معلومات إضافية عن العميل..." style="min-height:70px;resize:vertical;">${esc(u.notes||'')}</textarea></div>
+    <button class="mbtn" onclick="saveClientInfo()">حفظ التعديلات</button>`;
+}
+
+async function saveClientInfo(){
+  if(!_cpClientId) return;
+  const data = {
+    company_name: (document.getElementById('cp-company').value||'').trim() || null,
+    phone: (document.getElementById('cp-phone').value||'').trim() || null,
+    address: (document.getElementById('cp-address').value||'').trim() || null,
+    notes: (document.getElementById('cp-notes').value||'').trim() || null
+  };
+  try{
+    const r = await sbPatch('users', 'id=eq.'+_cpClientId, data);
+    const updated = Array.isArray(r)&&r[0] ? r[0] : null;
+    const idx = allUsers.findIndex(x=>x.id===_cpClientId);
+    if(idx>=0){ allUsers[idx] = {...allUsers[idx], ...(updated||data)}; }
+    showToast('تم حفظ المعلومات');
+  }catch(e){ showToast('فشل الحفظ'); }
+}
+
+async function renderClientProfileNotes(){
+  const b=document.getElementById('cp-body');
+  b.innerHTML = `<div class="cn-list" id="cn-list"><div class="cn-empty">جاري التحميل...</div></div>
+    <textarea id="cn-new" placeholder="أضف ملاحظة جديدة (لا يراها العميل)..." style="width:100%;padding:10px;border:1px solid var(--bd);border-radius:10px;font-size:13px;font-family:inherit;min-height:60px;resize:vertical;box-sizing:border-box;color:var(--t);" maxlength="1000"></textarea>
+    <button class="mbtn" style="margin-top:8px;" onclick="addClientNote()">إضافة ملاحظة</button>`;
+  try{
+    _cpNotes = await sbGet('client_notes', _cq('client_id=eq.'+_cpClientId+'&order=created_at.desc'));
+    drawCnList();
+  }catch(e){ document.getElementById('cn-list').innerHTML='<div class="cn-empty" style="color:#c33;">تعذّر تحميل الملاحظات</div>'; }
+}
+
+function drawCnList(){
+  const list=document.getElementById('cn-list');
+  if(!list) return;
+  if(!Array.isArray(_cpNotes)||_cpNotes.length===0){
+    list.innerHTML='<div class="cn-empty">لا توجد ملاحظات بعد</div>';
+    return;
+  }
+  list.innerHTML = _cpNotes.map(n=>{
+    const author = allUsers.find(u=>u.id===n.author_id);
+    const isOwn = me && n.author_id===me.id;
+    return `<div class="cn-item">
+      <div>${esc(n.text||'')}</div>
+      <div class="cn-meta">
+        <span>${esc(author?author.name:'موظف')} · ${fmtTime(n.created_at)}</span>
+        ${isOwn ? `<button class="cn-del" onclick="delClientNote('${esc(n.id)}')">حذف</button>` : ''}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function addClientNote(){
+  const inp=document.getElementById('cn-new');
+  if(!inp) return;
+  const txt=(inp.value||'').trim();
+  if(!txt){ showToast('اكتب نص الملاحظة'); return; }
+  try{
+    const row = await sbPost('client_notes', {
+      client_id: _cpClientId,
+      author_id: me.id,
+      company_id: myCompanyId,
+      text: txt
+    });
+    const created = Array.isArray(row)?row[0]:row;
+    if(created && created.id){ _cpNotes.unshift(created); }
+    inp.value='';
+    drawCnList();
+    showToast('تمت إضافة الملاحظة');
+  }catch(e){ showToast('فشل الحفظ'); }
+}
+
+async function delClientNote(id){
+  if(!confirm('حذف هذه الملاحظة؟')) return;
+  try{
+    await sbDelete('client_notes', _cq('id=eq.'+id));
+    _cpNotes = _cpNotes.filter(n=>n.id!==id);
+    drawCnList();
+  }catch(e){ showToast('فشل الحذف'); }
 }
 
 // ==============================
@@ -1778,6 +1948,7 @@ async function openDM(uid){
   cancelReply();cancelEdit();closeMsgMenu();
   try{closeSearch();}catch(e){}
   try{updateArchiveBtnLabel();}catch(e){}
+  try{updateClientProfileBtn();}catch(e){}
   // إعادة رسم القائمة لإخفاء شارة عدم القراءة
   try{renderChatList();}catch(e){}
   // في المحادثات الخاصة الجميع يقدر يرفع ملفات
@@ -1813,6 +1984,7 @@ async function openG(gid){
   cancelReply();cancelEdit();closeMsgMenu();
   try{closeSearch();}catch(e){}
   try{updateArchiveBtnLabel();}catch(e){}
+  try{updateClientProfileBtn();}catch(e){}
   try{renderChatList();}catch(e){}
   // داخل المجموعة: العميل لا يستطيع رفع ملفات
   const ab=document.getElementById('msg-attach-btn');
