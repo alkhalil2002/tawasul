@@ -106,6 +106,18 @@ svg{display:inline-block;vertical-align:middle;flex-shrink:0;}
 .arch-banner{padding:8px 14px;background:#fff3cd;border-bottom:1px solid #ffe69c;font-size:12px;color:#856404;display:flex;align-items:center;gap:8px;}
 .arch-banner svg{flex-shrink:0;}
 
+/* تقييم العميل */
+.rating-banner{margin:10px;padding:14px;background:linear-gradient(135deg,#fff8e7,#fff3cd);border:1px solid #f0d878;border-radius:14px;text-align:center;}
+.rating-banner .rt-title{font-size:13px;font-weight:700;color:#856404;margin-bottom:8px;}
+.rating-banner .stars{display:flex;gap:6px;justify-content:center;margin:8px 0;}
+.rating-banner .star{font-size:30px;cursor:pointer;filter:grayscale(1);opacity:.5;transition:all .15s;}
+.rating-banner .star.on,.rating-banner .star.hov{filter:none;opacity:1;transform:scale(1.1);}
+.rating-banner textarea{width:100%;padding:8px;border:1px solid var(--bd);border-radius:8px;font-size:12px;font-family:inherit;margin-top:6px;resize:none;min-height:50px;box-sizing:border-box;}
+.rating-banner .rt-btns{display:flex;gap:6px;margin-top:8px;}
+.rating-banner .rt-btns button{flex:1;padding:8px;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;}
+.rating-banner .rt-submit{background:var(--bp);color:#fff;}
+.rating-banner .rt-skip{background:#eee;color:#555;}
+
 /* التذاكر */
 .tk-status{display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:12px;font-size:11px;font-weight:700;}
 .tk-status.open{background:#d4edda;color:#155724;}
@@ -1254,6 +1266,7 @@ async function loadLastMessages(){
 // TICKETS (نظام التذاكر + تحويل)
 // ==============================
 const TK_STATUS_LABEL = {open:'🟢 مفتوح', in_progress:'🟡 قيد المعالجة', closed:'⚫ مغلق'};
+const TK_TAGS = ['شكوى','استفسار','طلب جديد','متابعة','أخرى'];
 function tkNum(n){ return 'TKT-' + String(n||0).padStart(4,'0'); }
 
 function getActiveTicketForClient(clientId){
@@ -1309,14 +1322,33 @@ function renderTicketModal(client){
   if(t.status!=='closed') actions += `<button class="tk-btn-transfer" onclick="openTransferPicker('${esc(t.id)}')">🔁 تحويل لموظف آخر</button>`;
   actions += '</div>';
 
+  const tagOpts = TK_TAGS.map(g=>`<option value="${esc(g)}" ${t.tag===g?'selected':''}>${esc(g)}</option>`).join('');
+  const ratingBlock = t.rating ? `
+    <div class="tk-row"><span class="tk-label">تقييم العميل</span><span class="tk-val">${'⭐'.repeat(t.rating)}${t.rating_comment?' · ' + esc(t.rating_comment.substring(0,40)) + (t.rating_comment.length>40?'…':''):''}</span></div>` : '';
   b.innerHTML = `
     <div class="tk-row"><span class="tk-label">رقم التذكرة</span><span class="tk-val" style="font-family:monospace;font-weight:700;">${tkNum(t.ticket_no)}</span></div>
     <div class="tk-row"><span class="tk-label">الحالة</span><span class="tk-status ${t.status}">${TK_STATUS_LABEL[t.status]||t.status}</span></div>
     <div class="tk-row"><span class="tk-label">العميل</span><span class="tk-val">${esc(client.name||'')}</span></div>
     <div class="tk-row"><span class="tk-label">الموظف المسؤول</span><span class="tk-val">${assigned?esc(assigned.name):'—'}</span></div>
+    <div class="tk-row"><span class="tk-label">التصنيف</span>
+      <select id="tk-tag-sel" onchange="updateTicketTag('${esc(t.id)}', this.value)" style="font-size:12px;padding:4px 8px;border:1px solid var(--bd);border-radius:8px;background:#fff;color:var(--t);">
+        <option value="">—</option>${tagOpts}
+      </select>
+    </div>
     <div class="tk-row"><span class="tk-label">تاريخ الفتح</span><span class="tk-val">${fmtTime(t.opened_at)}</span></div>
     <div class="tk-row"><span class="tk-label">تاريخ الإغلاق</span><span class="tk-val">${closedTxt}</span></div>
+    ${ratingBlock}
     ${actions}`;
+}
+
+async function updateTicketTag(ticketId, tag){
+  try{
+    const r = await sbPatch('tickets','id=eq.'+ticketId,{tag: tag||null});
+    const updated = Array.isArray(r)&&r[0] ? r[0] : null;
+    const idx = allTickets.findIndex(x=>x.id===ticketId);
+    if(idx>=0 && updated) allTickets[idx] = updated;
+    showToast('تم تحديث التصنيف');
+  }catch(e){ showToast('فشل التحديث'); }
 }
 
 async function createTicket(){
@@ -1373,6 +1405,89 @@ function openTransferPicker(ticketId){
         </button>`).join('')}
     </div>
     <button style="margin-top:10px;padding:8px;border:1px solid var(--bd);background:#fff;border-radius:8px;cursor:pointer;width:100%;font-size:13px;" onclick="(()=>{const c=allUsers.find(x=>x.id===curChat);if(c)renderTicketModal(c);})()">رجوع</button>`;
+}
+
+// ==============================
+// RATING (تقييم العميل بعد الإغلاق)
+// ==============================
+let _ratingTicketId = null;
+let _ratingValue = 0;
+
+// تذكرة مغلقة + غير مقيّمة + العميل هو الـ me + الموظف اللي معه هو curChat
+function getRatableTicket(){
+  if(!me || me.role!=='client' || ct!=='dm' || !curChat) return null;
+  return (allTickets||[]).find(t=>
+    t.client_id===me.id &&
+    t.status==='closed' &&
+    !t.rating &&
+    (t.assigned_to===curChat || t.created_by===curChat)
+  );
+}
+
+function showRatingBannerIfNeeded(){
+  // إزالة أي banner سابق
+  const old = document.getElementById('rating-banner');
+  if(old) old.remove();
+  const t = getRatableTicket();
+  if(!t) return;
+  _ratingTicketId = t.id;
+  _ratingValue = 0;
+  const msgs = document.getElementById('msgs');
+  if(!msgs) return;
+  const div = document.createElement('div');
+  div.id = 'rating-banner';
+  div.className = 'rating-banner';
+  div.innerHTML = `
+    <div class="rt-title">كيف كانت تجربتك مع تذكرة ${tkNum(t.ticket_no)}؟</div>
+    <div class="stars" id="rt-stars">
+      ${[1,2,3,4,5].map(i=>`<span class="star" data-v="${i}" onmouseenter="rtHover(${i})" onmouseleave="rtHover(0)" onclick="rtSet(${i})">⭐</span>`).join('')}
+    </div>
+    <textarea id="rt-comment" placeholder="تعليق اختياري..." maxlength="300"></textarea>
+    <div class="rt-btns">
+      <button class="rt-submit" onclick="submitRating()">إرسال التقييم</button>
+      <button class="rt-skip" onclick="skipRating()">تخطّي</button>
+    </div>`;
+  msgs.insertBefore(div, msgs.firstChild);
+}
+
+function rtHover(v){
+  document.querySelectorAll('#rt-stars .star').forEach(s=>{
+    const sv = parseInt(s.dataset.v);
+    s.classList.toggle('hov', v>0 && sv<=v);
+  });
+}
+function rtSet(v){
+  _ratingValue = v;
+  document.querySelectorAll('#rt-stars .star').forEach(s=>{
+    const sv = parseInt(s.dataset.v);
+    s.classList.toggle('on', sv<=v);
+  });
+}
+
+async function submitRating(){
+  if(!_ratingTicketId) return;
+  if(!_ratingValue){ showToast('اختر عدد النجوم أولاً'); return; }
+  const comment = (document.getElementById('rt-comment').value||'').trim() || null;
+  try{
+    const r = await sbPatch('tickets','id=eq.'+_ratingTicketId, {
+      rating: _ratingValue,
+      rating_comment: comment,
+      rating_at: new Date().toISOString()
+    });
+    const updated = Array.isArray(r)&&r[0] ? r[0] : null;
+    const idx = allTickets.findIndex(x=>x.id===_ratingTicketId);
+    if(idx>=0 && updated) allTickets[idx] = updated;
+    const b = document.getElementById('rating-banner');
+    if(b) b.remove();
+    showToast('شكراً لتقييمك!');
+    _ratingTicketId = null; _ratingValue = 0;
+  }catch(e){ showToast('فشل الإرسال'); }
+}
+
+function skipRating(){
+  const b = document.getElementById('rating-banner');
+  if(b) b.remove();
+  // لا نخزن "تم التخطي" — قد يظهر مرة أخرى لما يفتح الـ chat ثاني
 }
 
 async function transferTicket(ticketId, newStaffId){
@@ -1655,6 +1770,44 @@ function highlightSearchHit(mid){
     el.classList.add('msg-search-hit');
     el.scrollIntoView({behavior:'smooth', block:'center'});
   }
+}
+
+// ==============================
+// AUTO TICKET (إنشاء تذكرة تلقائي عند أول رسالة من العميل + توزيع Round-robin)
+// ==============================
+async function maybeAutoCreateTicket(sentData){
+  try{
+    if(!me || me.role!=='client') return;
+    if(!sentData || !sentData.to_user) return;
+    // هل فيه تذكرة active؟
+    const active = getActiveTicketForClient(me.id);
+    if(active) return;
+    // اختر موظف للتعيين (الموظف اللي أرسل له، إن كان مو client)
+    const recipient = allUsers.find(u=>u.id===sentData.to_user);
+    let assigned = recipient && recipient.role!=='client' ? recipient.id : null;
+    // لو الـ recipient client (مستبعد)، نستخدم round-robin
+    if(!assigned){
+      const staff = (allUsers||[]).filter(u=>u.role==='employee' || u.role==='supervisor');
+      if(staff.length){
+        // اختر اللي عنده أقل عدد تذاكر مفتوحة
+        const counts = {};
+        (allTickets||[]).filter(t=>t.status!=='closed').forEach(t=>{
+          if(t.assigned_to) counts[t.assigned_to] = (counts[t.assigned_to]||0)+1;
+        });
+        staff.sort((a,b)=>(counts[a.id]||0)-(counts[b.id]||0));
+        assigned = staff[0].id;
+      }
+    }
+    const row = await sbPost('tickets', {
+      client_id: me.id,
+      assigned_to: assigned,
+      company_id: myCompanyId,
+      status: 'open',
+      created_by: me.id
+    });
+    const created = Array.isArray(row)?row[0]:row;
+    if(created && created.id){ allTickets.unshift(created); }
+  }catch(e){}
 }
 
 // ==============================
@@ -2129,6 +2282,7 @@ async function openDM(uid){
   try{updateArchiveBtnLabel();}catch(e){}
   try{updateClientProfileBtn();}catch(e){}
   try{updateTicketBtn();}catch(e){}
+  setTimeout(()=>{try{showRatingBannerIfNeeded();}catch(e){}}, 600);
   // إعادة رسم القائمة لإخفاء شارة عدم القراءة
   try{renderChatList();}catch(e){}
   // في المحادثات الخاصة الجميع يقدر يرفع ملفات
@@ -2353,6 +2507,7 @@ async function sendMsg(){
   sbPost('messages',data).then(()=>{
     sendPushNotification(data);
     maybeSendAwayReply(data);
+    maybeAutoCreateTicket(data);
     loadMessages().then(()=>{
       if(document.activeElement!==inp) inp.focus();
     });
