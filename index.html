@@ -553,6 +553,9 @@ textarea.fi{resize:none;font-family:inherit;}
           <button id="fb-btn" onclick="toggleFiles()" style="display:none;" title="ملفات المجموعة">
             <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.85)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
           </button>
+          <button id="members-btn" onclick="openMembersModal()" style="display:none;" title="إدارة الأعضاء">
+            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.85)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          </button>
           <button id="hr-btn" onclick="openGroupHours()" style="display:none;" title="اوقات عمل المجموعة">
             <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.85)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/><path d="M18.5 18.5l1.5 1.5"/></svg>
           </button>
@@ -774,6 +777,17 @@ textarea.fi{resize:none;font-family:inherit;}
 
 <!-- ================== MESSAGE ACTION MENU ================== -->
 <div id="msg-menu" style="display:none;"></div>
+
+<!-- ================== MEMBERS MODAL (إدارة أعضاء المجموعة) ================== -->
+<div class="mbg" id="members-modal">
+  <div class="modal" onclick="event.stopPropagation()" style="max-width:480px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;">
+      <div class="mtitle">إدارة أعضاء المجموعة</div>
+      <button onclick="document.getElementById('members-modal').classList.remove('open')" style="background:none;border:none;cursor:pointer;padding:0;"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#666" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+    </div>
+    <div id="members-body"></div>
+  </div>
+</div>
 
 <!-- ================== BROADCAST MODAL ================== -->
 <div class="mbg" id="bcast-modal">
@@ -1824,6 +1838,119 @@ function highlightSearchHit(mid){
 }
 
 // ==============================
+// GROUP MEMBERS MANAGEMENT (إدارة أعضاء المجموعة)
+// ==============================
+function canManageGroupMembers(g){
+  if(!g || !me) return false;
+  if(me.role==='admin' || me.role==='supervisor') return true;
+  if(g.created_by === me.id) return true;
+  return false;
+}
+
+function updateMembersBtn(){
+  const btn=document.getElementById('members-btn');
+  if(!btn) return;
+  let show=false;
+  if(ct==='group' && curChat){
+    const g = allGroups.find(x=>x.id===curChat);
+    if(g && canManageGroupMembers(g)) show=true;
+  }
+  btn.style.display = show ? '' : 'none';
+}
+
+function openMembersModal(){
+  if(ct!=='group' || !curChat) return;
+  const g = allGroups.find(x=>x.id===curChat);
+  if(!g) return;
+  if(!canManageGroupMembers(g)){ showToast('لا تملك صلاحية إدارة الأعضاء'); return; }
+  renderMembersModal(g);
+  document.getElementById('members-modal').classList.add('open');
+}
+
+function renderMembersModal(g){
+  const memberIds = g.members || [];
+  const members = (allUsers||[]).filter(u=>memberIds.includes(u.id));
+  const nonMembers = (allUsers||[]).filter(u=>!memberIds.includes(u.id) && u.id!==me.id);
+  const b = document.getElementById('members-body');
+
+  const memList = members.map(u=>`
+    <div class="urow">${avE(u,36)}
+      <div class="uri">
+        <div class="urn">${esc(u.name)}</div>
+        <div class="urid"><span class="badge ${RB[u.role]}">${RS[u.role]}</span></div>
+      </div>
+      <div class="ura">
+        ${u.id!==g.created_by?`<button class="abt d" onclick="removeMember('${esc(u.id)}')" title="إزالة">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>`:'<span style="font-size:10px;color:var(--t3);">منشئ</span>'}
+      </div>
+    </div>`).join('');
+
+  const addOpts = nonMembers.length ? nonMembers.map(u=>`
+    <div class="urow" style="cursor:pointer;" onclick="addMember('${esc(u.id)}')">${avE(u,36)}
+      <div class="uri">
+        <div class="urn">${esc(u.name)}</div>
+        <div class="urid"><span class="badge ${RB[u.role]}">${RS[u.role]}</span></div>
+      </div>
+      <div class="ura"><button class="abt" style="background:#d4edda;color:#155724;">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      </button></div>
+    </div>`).join('') : '<div class="cn-empty">كل المستخدمين أعضاء بالفعل</div>';
+
+  b.innerHTML = `
+    <div class="stitle" style="margin-top:8px;">الأعضاء الحاليون (${members.length})</div>
+    <div style="max-height:200px;overflow-y:auto;margin-bottom:14px;">${memList||'<div class="cn-empty">لا يوجد أعضاء</div>'}</div>
+    <div class="stitle">إضافة أعضاء</div>
+    <input type="text" id="mm-search" placeholder="ابحث بالاسم..." oninput="filterMembersList(this.value)" style="width:100%;padding:8px 12px;border:1px solid var(--bd);border-radius:18px;font-size:13px;margin-bottom:8px;box-sizing:border-box;background:#f7f7f7;"/>
+    <div id="mm-add-list" style="max-height:240px;overflow-y:auto;">${addOpts}</div>`;
+}
+
+function filterMembersList(q){
+  q = (q||'').trim().toLowerCase();
+  const items = document.querySelectorAll('#mm-add-list .urow');
+  items.forEach(it=>{
+    const name = (it.querySelector('.urn')?.textContent||'').toLowerCase();
+    it.style.display = (!q || name.includes(q)) ? '' : 'none';
+  });
+}
+
+async function addMember(userId){
+  if(ct!=='group' || !curChat) return;
+  const g = allGroups.find(x=>x.id===curChat);
+  if(!g) return;
+  try{
+    await sbPost('group_members', {
+      company_id: myCompanyId,
+      group_id: g.id,
+      user_id: userId
+    });
+    g.members = [...(g.members||[]), userId];
+    const u = allUsers.find(x=>x.id===userId);
+    logAction('add_group_member','group', g.id, (u?u.name:'مستخدم')+' → '+g.name);
+    renderMembersModal(g);
+    try{ renderChatList(); }catch(e){}
+    showToast('تم إضافة العضو');
+  }catch(e){ showToast('فشل الإضافة'); }
+}
+
+async function removeMember(userId){
+  if(ct!=='group' || !curChat) return;
+  const g = allGroups.find(x=>x.id===curChat);
+  if(!g) return;
+  if(userId === g.created_by){ showToast('لا يمكن إزالة منشئ المجموعة'); return; }
+  if(!confirm('إزالة هذا العضو من المجموعة؟')) return;
+  try{
+    await sbDelete('group_members', _cq('group_id=eq.'+g.id+'&user_id=eq.'+userId));
+    g.members = (g.members||[]).filter(id=>id!==userId);
+    const u = allUsers.find(x=>x.id===userId);
+    logAction('remove_group_member','group', g.id, (u?u.name:'مستخدم')+' ← '+g.name);
+    renderMembersModal(g);
+    try{ renderChatList(); }catch(e){}
+    showToast('تم إزالة العضو');
+  }catch(e){ showToast('فشل الإزالة'); }
+}
+
+// ==============================
 // BROADCAST (إعلان عام لكل العملاء)
 // ==============================
 function canBroadcast(){ return me && (me.role==='admin' || me.role==='supervisor'); }
@@ -2639,6 +2766,7 @@ async function openDM(uid){
   try{updateClientProfileBtn();}catch(e){}
   try{updateTicketBtn();}catch(e){}
   try{updateScheduleBtn();}catch(e){}
+  try{updateMembersBtn();}catch(e){}
   setTimeout(()=>{try{showRatingBannerIfNeeded();}catch(e){}}, 600);
   // إعادة رسم القائمة لإخفاء شارة عدم القراءة
   try{renderChatList();}catch(e){}
@@ -2678,6 +2806,7 @@ async function openG(gid){
   try{updateClientProfileBtn();}catch(e){}
   try{updateTicketBtn();}catch(e){}
   try{updateScheduleBtn();}catch(e){}
+  try{updateMembersBtn();}catch(e){}
   try{renderChatList();}catch(e){}
   // داخل المجموعة: العميل لا يستطيع رفع ملفات
   const ab=document.getElementById('msg-attach-btn');
