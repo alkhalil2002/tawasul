@@ -106,6 +106,24 @@ svg{display:inline-block;vertical-align:middle;flex-shrink:0;}
 .arch-banner{padding:8px 14px;background:#fff3cd;border-bottom:1px solid #ffe69c;font-size:12px;color:#856404;display:flex;align-items:center;gap:8px;}
 .arch-banner svg{flex-shrink:0;}
 
+/* التذاكر */
+.tk-status{display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:12px;font-size:11px;font-weight:700;}
+.tk-status.open{background:#d4edda;color:#155724;}
+.tk-status.in_progress{background:#fff3cd;color:#856404;}
+.tk-status.closed{background:#e2e3e5;color:#383d41;}
+.tk-row{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #f0f0f0;font-size:13px;}
+.tk-row:last-child{border-bottom:none;}
+.tk-label{color:var(--t2);font-weight:600;}
+.tk-val{color:var(--t);}
+.tk-actions{display:flex;flex-direction:column;gap:8px;margin-top:14px;}
+.tk-actions button{padding:10px;border:none;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;}
+.tk-btn-progress{background:#fff3cd;color:#856404;}
+.tk-btn-close{background:#f8d7da;color:#721c24;}
+.tk-btn-reopen{background:#d4edda;color:#155724;}
+.tk-btn-transfer{background:#cfe2f3;color:#0c4d8a;}
+.tk-btn-new{background:var(--bp);color:#fff;}
+.tk-empty{padding:24px;text-align:center;color:var(--t3);font-size:13px;}
+
 /* ملف العميل */
 .cp-tabs{display:flex;gap:0;border-bottom:1px solid var(--bd);margin:10px -4px 12px;}
 .cp-tab{padding:9px 16px;cursor:pointer;font-size:13px;color:var(--t2);border-bottom:2px solid transparent;font-weight:600;transition:color .15s,border-color .15s;}
@@ -535,6 +553,9 @@ textarea.fi{resize:none;font-family:inherit;}
           <button id="client-profile-btn" onclick="openClientProfile()" style="display:none;" title="ملف العميل">
             <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.85)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
           </button>
+          <button id="ticket-btn" onclick="openTicketModal()" style="display:none;" title="التذكرة">
+            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.85)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9a2 2 0 0 0 0 4v5a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-5a2 2 0 0 0 0-4V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v3z"/><line x1="13" y1="5" x2="13" y2="7"/><line x1="13" y1="11" x2="13" y2="13"/><line x1="13" y1="17" x2="13" y2="19"/></svg>
+          </button>
         </div>
       </div>
       <div class="search-bar" id="search-bar">
@@ -734,6 +755,17 @@ textarea.fi{resize:none;font-family:inherit;}
 <!-- ================== MESSAGE ACTION MENU ================== -->
 <div id="msg-menu" style="display:none;"></div>
 
+<!-- ================== TICKET MODAL ================== -->
+<div class="mbg" id="ticket-modal">
+  <div class="modal" onclick="event.stopPropagation()" style="max-width:440px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;">
+      <div class="mtitle">تذكرة الدعم</div>
+      <button onclick="closeTicketModal()" style="background:none;border:none;cursor:pointer;padding:0;"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#666" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+    </div>
+    <div id="ticket-body"></div>
+  </div>
+</div>
+
 <!-- ================== CLIENT PROFILE MODAL ================== -->
 <div class="mbg" id="client-profile-modal">
   <div class="modal" onclick="event.stopPropagation()" style="max-width:480px;">
@@ -901,7 +933,7 @@ function disconnectRealtime(){
 // ==============================
 let me = null, curChat = null, ct = 'dm', lt = 'staff';
 let myCompanyId = null;
-let allUsers = [], allGroups = [], allTemplates = [], allCompanies = [], allCannedResponses = [], myCompany = null, myArchives = [], _showArchive = false, settings = {work_start:8, work_end:17, work_days:[0,1,2,3,4]};
+let allUsers = [], allGroups = [], allTemplates = [], allCompanies = [], allCannedResponses = [], myCompany = null, myArchives = [], _showArchive = false, allTickets = [], settings = {work_start:8, work_end:17, work_days:[0,1,2,3,4]};
 let msgTimeCache = {}, lastMsgPreview = {}, lastMsgTime = {}, unreadCount = {};
 let selMembers = [], selTpl = null, cs = [], cfs = null, nts = [];
 let showFiles = false, msgCache = {};
@@ -1114,14 +1146,15 @@ async function loadCompanyData(forceRefresh=false){
   // 2) جلب من الشبكة (في الخلفية لو cache كان موجود)
   const fetchAll = async () => {
     try{
-      const [u,g,t,s,cr,co,arch] = await Promise.all([
+      const [u,g,t,s,cr,co,arch,tk] = await Promise.all([
         sbGet('users',_cq('order=created_at')),
         sbGet('groups',_cq('order=created_at')),
         sbGet('templates',_cq('order=created_at')),
         sbGet('settings','id=eq.1'),
         sbGet('canned_responses',_cq('order=created_at')),
         sbGet('companies','id=eq.'+myCompanyId),
-        sbGet('chat_archives',_cq('user_id=eq.'+me.id))
+        sbGet('chat_archives',_cq('user_id=eq.'+me.id)),
+        sbGet('tickets',_cq('order=opened_at.desc'))
       ]);
       if(Array.isArray(u)) allUsers=u;
       if(Array.isArray(g)) allGroups=g;
@@ -1130,6 +1163,7 @@ async function loadCompanyData(forceRefresh=false){
       if(Array.isArray(cr)) allCannedResponses=cr;
       if(Array.isArray(co)&&co[0]) myCompany=co[0];
       if(Array.isArray(arch)) myArchives=arch;
+      if(Array.isArray(tk)) allTickets=tk;
       await Promise.all(allGroups.map(async gr=>{
         try{
           const mems=await sbGet('group_members',`group_id=eq.${gr.id}&select=user_id`);
@@ -1214,6 +1248,145 @@ async function loadLastMessages(){
       }
     });
   } catch(e){}
+}
+
+// ==============================
+// TICKETS (نظام التذاكر + تحويل)
+// ==============================
+const TK_STATUS_LABEL = {open:'🟢 مفتوح', in_progress:'🟡 قيد المعالجة', closed:'⚫ مغلق'};
+function tkNum(n){ return 'TKT-' + String(n||0).padStart(4,'0'); }
+
+function getActiveTicketForClient(clientId){
+  // التذكرة الأحدث غير المغلقة
+  return (allTickets||[]).find(t=>t.client_id===clientId && t.status!=='closed');
+}
+function getLatestTicketForClient(clientId){
+  return (allTickets||[]).find(t=>t.client_id===clientId);
+}
+
+function updateTicketBtn(){
+  const btn=document.getElementById('ticket-btn');
+  if(!btn) return;
+  let show=false;
+  if(me && me.role!=='client' && ct==='dm' && curChat){
+    const u = allUsers.find(x=>x.id===curChat);
+    if(u && u.role==='client') show=true;
+  }
+  btn.style.display = show ? '' : 'none';
+}
+
+function openTicketModal(){
+  if(!curChat || ct!=='dm') return;
+  const u = allUsers.find(x=>x.id===curChat);
+  if(!u || u.role!=='client') return;
+  renderTicketModal(u);
+  document.getElementById('ticket-modal').classList.add('open');
+}
+function closeTicketModal(){ document.getElementById('ticket-modal').classList.remove('open'); }
+
+function renderTicketModal(client){
+  const t = getLatestTicketForClient(client.id);
+  const b = document.getElementById('ticket-body');
+  if(!t){
+    b.innerHTML = `
+      <div class="tk-empty">لا توجد تذكرة لهذا العميل بعد</div>
+      <div class="tk-actions"><button class="tk-btn-new" onclick="createTicket()">+ فتح تذكرة جديدة</button></div>`;
+    return;
+  }
+  const assigned = allUsers.find(x=>x.id===t.assigned_to);
+  const closedTxt = t.closed_at ? fmtTime(t.closed_at) : '—';
+  let actions = '<div class="tk-actions">';
+  if(t.status==='open'){
+    actions += `<button class="tk-btn-progress" onclick="updateTicketStatus('${esc(t.id)}','in_progress')">انقل إلى "قيد المعالجة"</button>`;
+    actions += `<button class="tk-btn-close" onclick="updateTicketStatus('${esc(t.id)}','closed')">إغلاق التذكرة</button>`;
+  } else if(t.status==='in_progress'){
+    actions += `<button class="tk-btn-close" onclick="updateTicketStatus('${esc(t.id)}','closed')">إغلاق التذكرة</button>`;
+    actions += `<button class="tk-btn-progress" onclick="updateTicketStatus('${esc(t.id)}','open')">إرجاع لـ "مفتوح"</button>`;
+  } else {
+    actions += `<button class="tk-btn-reopen" onclick="updateTicketStatus('${esc(t.id)}','open')">إعادة فتح</button>`;
+    actions += `<button class="tk-btn-new" onclick="createTicket()">+ فتح تذكرة جديدة</button>`;
+  }
+  if(t.status!=='closed') actions += `<button class="tk-btn-transfer" onclick="openTransferPicker('${esc(t.id)}')">🔁 تحويل لموظف آخر</button>`;
+  actions += '</div>';
+
+  b.innerHTML = `
+    <div class="tk-row"><span class="tk-label">رقم التذكرة</span><span class="tk-val" style="font-family:monospace;font-weight:700;">${tkNum(t.ticket_no)}</span></div>
+    <div class="tk-row"><span class="tk-label">الحالة</span><span class="tk-status ${t.status}">${TK_STATUS_LABEL[t.status]||t.status}</span></div>
+    <div class="tk-row"><span class="tk-label">العميل</span><span class="tk-val">${esc(client.name||'')}</span></div>
+    <div class="tk-row"><span class="tk-label">الموظف المسؤول</span><span class="tk-val">${assigned?esc(assigned.name):'—'}</span></div>
+    <div class="tk-row"><span class="tk-label">تاريخ الفتح</span><span class="tk-val">${fmtTime(t.opened_at)}</span></div>
+    <div class="tk-row"><span class="tk-label">تاريخ الإغلاق</span><span class="tk-val">${closedTxt}</span></div>
+    ${actions}`;
+}
+
+async function createTicket(){
+  if(!curChat || ct!=='dm') return;
+  const u = allUsers.find(x=>x.id===curChat);
+  if(!u || u.role!=='client') return;
+  try{
+    const row = await sbPost('tickets', {
+      client_id: u.id,
+      assigned_to: me.id,
+      company_id: myCompanyId,
+      status: 'open',
+      created_by: me.id
+    });
+    const created = Array.isArray(row)?row[0]:row;
+    if(created && created.id){ allTickets.unshift(created); }
+    renderTicketModal(u);
+    try{ renderChatList(); }catch(e){}
+    showToast('تم فتح تذكرة جديدة');
+  }catch(e){ showToast('فشل الإنشاء'); }
+}
+
+async function updateTicketStatus(ticketId, newStatus){
+  const t = allTickets.find(x=>x.id===ticketId);
+  if(!t) return;
+  const patch = {status: newStatus};
+  patch.closed_at = newStatus==='closed' ? new Date().toISOString() : null;
+  try{
+    const r = await sbPatch('tickets','id=eq.'+ticketId, patch);
+    const updated = Array.isArray(r)&&r[0] ? r[0] : null;
+    const idx = allTickets.findIndex(x=>x.id===ticketId);
+    if(idx>=0) allTickets[idx] = updated || {...t, ...patch};
+    const u = allUsers.find(x=>x.id===t.client_id);
+    if(u) renderTicketModal(u);
+    try{ renderChatList(); }catch(e){}
+    showToast('تم تحديث الحالة');
+  }catch(e){ showToast('فشل التحديث'); }
+}
+
+function openTransferPicker(ticketId){
+  const staff = (allUsers||[]).filter(u=>u.role!=='client' && u.role!=='super_admin' && u.id!==me.id);
+  if(!staff.length){ showToast('لا يوجد موظفون آخرون'); return; }
+  const b = document.getElementById('ticket-body');
+  b.innerHTML = `
+    <div style="font-size:13px;color:var(--t2);font-weight:600;margin-bottom:10px;">اختر الموظف الذي تريد تحويل التذكرة إليه:</div>
+    <div style="max-height:300px;overflow-y:auto;display:flex;flex-direction:column;gap:6px;">
+      ${staff.map(u=>`
+        <button onclick="transferTicket('${esc(ticketId)}','${esc(u.id)}')" style="display:flex;align-items:center;gap:10px;padding:10px;background:#f7f7f7;border:1px solid var(--bd);border-radius:10px;cursor:pointer;text-align:right;">
+          ${avE(u,36)}
+          <div style="flex:1;">
+            <div style="font-size:13px;font-weight:700;color:var(--t);">${esc(u.name)}</div>
+            <div style="font-size:11px;color:var(--t2);">${esc(RS[u.role]||u.role)}</div>
+          </div>
+        </button>`).join('')}
+    </div>
+    <button style="margin-top:10px;padding:8px;border:1px solid var(--bd);background:#fff;border-radius:8px;cursor:pointer;width:100%;font-size:13px;" onclick="(()=>{const c=allUsers.find(x=>x.id===curChat);if(c)renderTicketModal(c);})()">رجوع</button>`;
+}
+
+async function transferTicket(ticketId, newStaffId){
+  try{
+    const r = await sbPatch('tickets','id=eq.'+ticketId, {assigned_to: newStaffId});
+    const updated = Array.isArray(r)&&r[0] ? r[0] : null;
+    const idx = allTickets.findIndex(x=>x.id===ticketId);
+    if(idx>=0 && updated) allTickets[idx] = updated;
+    const newStaff = allUsers.find(u=>u.id===newStaffId);
+    const c = allUsers.find(x=>x.id===curChat);
+    if(c) renderTicketModal(c);
+    try{ renderChatList(); }catch(e){}
+    showToast('تم التحويل إلى ' + (newStaff?newStaff.name:'موظف'));
+  }catch(e){ showToast('فشل التحويل'); }
 }
 
 // ==============================
@@ -1804,7 +1977,7 @@ async function doLogout(){
   try{await clearPushToken();}catch(e){}
   // صفّر كل بيانات الجلسة
   me=null;curChat=null;myCompanyId=null;ct='dm';
-  allUsers=[];allGroups=[];allTemplates=[];allCompanies=[];allCannedResponses=[];myCompany=null;myArchives=[];_showArchive=false;
+  allUsers=[];allGroups=[];allTemplates=[];allCompanies=[];allCannedResponses=[];myCompany=null;myArchives=[];_showArchive=false;allTickets=[];
   settings={work_start:8, work_end:17, work_days:[0,1,2,3,4]};
   msgTimeCache={};lastMsgPreview={};lastMsgTime={};unreadCount={};
   msgCache={};lastMsgs=[];
@@ -1895,10 +2068,16 @@ function renderChatList(filter){
       const t=lastMsgTime[u.id]||'';
       const uc=unreadCount[u.id]||0;
       const ucHtml=uc>0?`<span class="unread-badge">${uc>99?'99+':uc}</span>`:'';
+      // شارة حالة التذكرة (لو العميل وعندي صلاحيات staff)
+      let tkBadge='';
+      if(me && me.role!=='client' && u.role==='client'){
+        const t2 = getLatestTicketForClient(u.id);
+        if(t2){ tkBadge = ` <span class="tk-status ${t2.status}" style="font-size:9px;padding:2px 6px;">${TK_STATUS_LABEL[t2.status]||''}</span>`; }
+      }
       return`<div class="ci" onclick="openDM('${esc(u.id)}')" id="ci-${esc(u.id)}">
         ${avE(u,46)}
         <div class="cin">
-          <div class="cit"><span class="cnm">${esc(u.name)} <span class="badge ${RB[u.role]}">${RS[u.role]}</span></span><span class="ctm">${esc(t)}</span></div>
+          <div class="cit"><span class="cnm">${esc(u.name)} <span class="badge ${RB[u.role]}">${RS[u.role]}</span>${tkBadge}</span><span class="ctm">${esc(t)}</span></div>
           <div class="cpv-row"><div class="cpv">${esc(preview)}</div>${ucHtml}</div>
         </div>
       </div>`;
@@ -1949,6 +2128,7 @@ async function openDM(uid){
   try{closeSearch();}catch(e){}
   try{updateArchiveBtnLabel();}catch(e){}
   try{updateClientProfileBtn();}catch(e){}
+  try{updateTicketBtn();}catch(e){}
   // إعادة رسم القائمة لإخفاء شارة عدم القراءة
   try{renderChatList();}catch(e){}
   // في المحادثات الخاصة الجميع يقدر يرفع ملفات
@@ -1985,6 +2165,7 @@ async function openG(gid){
   try{closeSearch();}catch(e){}
   try{updateArchiveBtnLabel();}catch(e){}
   try{updateClientProfileBtn();}catch(e){}
+  try{updateTicketBtn();}catch(e){}
   try{renderChatList();}catch(e){}
   // داخل المجموعة: العميل لا يستطيع رفع ملفات
   const ab=document.getElementById('msg-attach-btn');
