@@ -524,6 +524,9 @@ textarea.fi{resize:none;font-family:inherit;}
       <button class="ibtn" id="arch-toggle" onclick="toggleArchiveView()" title="الأرشيف">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/></svg>
       </button>
+      <button class="ibtn" id="bcast-btn" onclick="openBroadcastModal()" style="display:none;" title="إعلان عام لكل العملاء">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/></svg>
+      </button>
       <button class="ibtn" id="grp-btn" onclick="openNewGroup()" style="display:none;" title="مجموعة جديدة">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="7" r="4"/><path d="M3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2M16 11h6M19 8v6"/></svg>
       </button>
@@ -603,6 +606,9 @@ textarea.fi{resize:none;font-family:inherit;}
           <input type="text" placeholder="اكتب رسالة..." id="msg-inp" onkeydown="if(event.key==='Enter')sendMsg()"/>
           <button id="canned-btn" onclick="toggleCannedSheet()" title="ردود جاهزة" style="display:none;padding:6px;background:none;border:none;cursor:pointer;">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#888" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+          </button>
+          <button id="sched-btn" onclick="openScheduleModal()" title="جدولة الرسالة" style="display:none;padding:6px;background:none;border:none;cursor:pointer;">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#888" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg>
           </button>
           <button id="emoji-btn" onclick="toggleEmoji()" title="إيموجي" style="padding:6px;background:none;border:none;cursor:pointer;">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#888" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
@@ -768,6 +774,43 @@ textarea.fi{resize:none;font-family:inherit;}
 
 <!-- ================== MESSAGE ACTION MENU ================== -->
 <div id="msg-menu" style="display:none;"></div>
+
+<!-- ================== BROADCAST MODAL ================== -->
+<div class="mbg" id="bcast-modal">
+  <div class="modal" onclick="event.stopPropagation()" style="max-width:440px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;">
+      <div class="mtitle">📢 إعلان عام لكل العملاء</div>
+      <button onclick="document.getElementById('bcast-modal').classList.remove('open')" style="background:none;border:none;cursor:pointer;padding:0;"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#666" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+    </div>
+    <div class="field"><label>نص الرسالة</label>
+      <textarea class="fi" id="bcast-text" placeholder="مثال: إجازة عيد الفطر — سيتم إيقاف الخدمة من 1 إلى 5 شوال." style="min-height:100px;resize:vertical;" maxlength="500"></textarea>
+    </div>
+    <div class="inote" style="margin-bottom:8px;">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#666" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><circle cx="12" cy="12" r="9"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+      <span id="bcast-count">سيتم الإرسال لـ ... عميل</span>
+    </div>
+    <button class="mbtn" onclick="sendBroadcast()">إرسال الإعلان</button>
+    <button class="mcanc" onclick="document.getElementById('bcast-modal').classList.remove('open')">إلغاء</button>
+  </div>
+</div>
+
+<!-- ================== SCHEDULE MESSAGE MODAL ================== -->
+<div class="mbg" id="sched-modal">
+  <div class="modal" onclick="event.stopPropagation()" style="max-width:400px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;">
+      <div class="mtitle">⏰ جدولة رسالة</div>
+      <button onclick="document.getElementById('sched-modal').classList.remove('open')" style="background:none;border:none;cursor:pointer;padding:0;"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#666" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+    </div>
+    <div class="field"><label>نص الرسالة</label>
+      <textarea class="fi" id="sched-text" placeholder="نص الرسالة..." style="min-height:80px;resize:vertical;" maxlength="1000"></textarea>
+    </div>
+    <div class="field"><label>التاريخ والوقت</label>
+      <input class="fi" type="datetime-local" id="sched-time" dir="ltr"/>
+    </div>
+    <button class="mbtn" onclick="scheduleMessage()">جدولة الإرسال</button>
+    <button class="mcanc" onclick="document.getElementById('sched-modal').classList.remove('open')">إلغاء</button>
+  </div>
+</div>
 
 <!-- ================== TICKET MODAL ================== -->
 <div class="mbg" id="ticket-modal">
@@ -1111,6 +1154,8 @@ async function boot(){
           myCompanyId=me.company_id;
           setupPush();
           updateCannedBtnVisibility();
+          updateBroadcastBtn();
+          startSchedulePoller();
           if(me.role==='super_admin'){
             await loadSuperAdminData();
             showSc('superadmin');
@@ -1779,6 +1824,160 @@ function highlightSearchHit(mid){
 }
 
 // ==============================
+// BROADCAST (إعلان عام لكل العملاء)
+// ==============================
+function canBroadcast(){ return me && (me.role==='admin' || me.role==='supervisor'); }
+
+function updateBroadcastBtn(){
+  const btn=document.getElementById('bcast-btn');
+  if(btn) btn.style.display = canBroadcast() ? '' : 'none';
+}
+
+function openBroadcastModal(){
+  if(!canBroadcast()) return;
+  const clients = (allUsers||[]).filter(u=>u.role==='client' && !u.is_blocked);
+  document.getElementById('bcast-count').textContent = `سيتم الإرسال لـ ${clients.length} عميل`;
+  document.getElementById('bcast-text').value = '';
+  document.getElementById('bcast-modal').classList.add('open');
+}
+
+async function sendBroadcast(){
+  const txt = (document.getElementById('bcast-text').value||'').trim();
+  if(!txt){ showToast('اكتب نص الإعلان'); return; }
+  const clients = (allUsers||[]).filter(u=>u.role==='client' && !u.is_blocked);
+  if(!clients.length){ showToast('لا يوجد عملاء'); return; }
+  if(!confirm(`إرسال هذا الإعلان لـ ${clients.length} عميل؟`)) return;
+  let sent=0, failed=0;
+  // أرسل في batches من 10
+  for(let i=0; i<clients.length; i+=10){
+    const batch = clients.slice(i, i+10);
+    await Promise.all(batch.map(c=>{
+      return sbPost('messages', {
+        from_user: me.id,
+        to_user: c.id,
+        company_id: myCompanyId,
+        text: '📢 ' + txt,
+        type: 'text',
+        delivered: false,
+        read_at: null
+      }).then(()=>sent++).catch(()=>failed++);
+    }));
+  }
+  logAction('broadcast', null, null, `${sent} عميل · ${txt.substring(0,60)}`);
+  document.getElementById('bcast-modal').classList.remove('open');
+  showToast(`تم الإرسال لـ ${sent} عميل${failed?` (${failed} فشل)`:''}`);
+}
+
+// ==============================
+// SCHEDULED MESSAGES (رسائل مجدولة)
+// ==============================
+function updateScheduleBtn(){
+  const b=document.getElementById('sched-btn');
+  if(!b) return;
+  b.style.display = (me && me.role!=='client' && curChat && ct==='dm') ? '' : 'none';
+}
+
+function openScheduleModal(){
+  if(!curChat || ct!=='dm'){ showToast('افتح محادثة أولاً'); return; }
+  const inp=document.getElementById('msg-inp');
+  document.getElementById('sched-text').value = (inp && inp.value) ? inp.value : '';
+  // ضع الوقت الافتراضي: الآن + ساعة واحدة
+  const d = new Date(Date.now() + 60*60*1000);
+  const local = new Date(d.getTime() - d.getTimezoneOffset()*60000).toISOString().slice(0,16);
+  document.getElementById('sched-time').value = local;
+  document.getElementById('sched-modal').classList.add('open');
+}
+
+async function scheduleMessage(){
+  const txt = (document.getElementById('sched-text').value||'').trim();
+  const timeStr = document.getElementById('sched-time').value;
+  if(!txt){ showToast('اكتب النص'); return; }
+  if(!timeStr){ showToast('اختر وقت الإرسال'); return; }
+  const sendAt = new Date(timeStr);
+  if(isNaN(sendAt.getTime()) || sendAt.getTime() <= Date.now()){
+    showToast('الوقت يجب أن يكون في المستقبل'); return;
+  }
+  try{
+    await sbPost('scheduled_messages', {
+      from_user: me.id,
+      to_user: ct==='dm' ? curChat : null,
+      group_id: ct==='group' ? curChat : null,
+      company_id: myCompanyId,
+      text: txt,
+      send_at: sendAt.toISOString()
+    });
+    document.getElementById('sched-modal').classList.remove('open');
+    const inp=document.getElementById('msg-inp');
+    if(inp) inp.value = '';
+    showToast('تم جدولة الرسالة ⏰');
+  }catch(e){ showToast('فشل الجدولة'); }
+}
+
+// Poller — يتفقد كل 60 ثانية إذا فيه رسائل مجدولة جاهزة للإرسال
+let _schedPoller = null;
+function startSchedulePoller(){
+  if(_schedPoller) return;
+  _schedPoller = setInterval(processScheduledMessages, 60*1000);
+  // شغّل مرة واحدة فوراً
+  setTimeout(processScheduledMessages, 5000);
+}
+function stopSchedulePoller(){
+  if(_schedPoller){ clearInterval(_schedPoller); _schedPoller=null; }
+}
+
+async function processScheduledMessages(){
+  if(!me || !myCompanyId) return;
+  try{
+    const now = new Date().toISOString();
+    const due = await sbGet('scheduled_messages',
+      _cq(`from_user=eq.${me.id}&sent=eq.false&send_at=lte.${encodeURIComponent(now)}&order=send_at`));
+    if(!Array.isArray(due) || !due.length) return;
+    for(const s of due){
+      // علم sent=true أولاً لتفادي race
+      const r = await sbPatch('scheduled_messages', _cq(`id=eq.${s.id}&sent=eq.false`), {sent: true});
+      if(!Array.isArray(r) || !r.length) continue; // race lost
+      // أرسل
+      const data = {
+        from_user: s.from_user,
+        to_user: s.to_user,
+        group_id: s.group_id,
+        company_id: s.company_id,
+        text: s.text,
+        type: 'text',
+        delivered: false,
+        read_at: null
+      };
+      await sbPost('messages', data).catch(()=>{});
+      sendPushNotification(data);
+    }
+  }catch(e){}
+}
+
+// ==============================
+// SLA — إعداد + عرض في stats
+// ==============================
+async function saveSlaMinutes(){
+  if(!myCompany){ showToast('بيانات الشركة غير محملة'); return; }
+  const v = parseInt(document.getElementById('sla-min').value || '0');
+  try{
+    const r = await sbPatch('companies','id=eq.'+myCompany.id, {sla_minutes: v});
+    if(Array.isArray(r)&&r[0]) myCompany = r[0];
+    else myCompany.sla_minutes = v;
+    showToast('تم حفظ SLA');
+  }catch(e){ showToast('فشل الحفظ'); }
+}
+
+function getSlaBreachCount(){
+  if(!myCompany || !myCompany.sla_minutes) return 0;
+  const threshold = myCompany.sla_minutes * 60 * 1000;
+  const now = Date.now();
+  return (allTickets||[]).filter(t=>{
+    if(t.status!=='open' && t.status!=='in_progress') return false;
+    return (now - new Date(t.opened_at).getTime()) > threshold;
+  }).length;
+}
+
+// ==============================
 // BLOCK / UNBLOCK CLIENT
 // ==============================
 async function toggleBlockClient(id){
@@ -1836,6 +2035,9 @@ async function renderStatsTab(b){
       <div style="font-size:24px;font-weight:800;">${val}</div>
       <div style="font-size:11px;opacity:.9;margin-top:4px;">${label}</div></div>`;
 
+    const slaBreach = getSlaBreachCount();
+    const slaCard = (myCompany && myCompany.sla_minutes>0) ? card(`تجاوزت SLA (${myCompany.sla_minutes}د)`, slaBreach, slaBreach>0?'#dc3545':'#28a745') : '';
+
     b.innerHTML = `<div class="stitle">إحصائيات الشركة</div>
       <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:10px;">
         ${card('تذاكر مفتوحة', open, '#28a745')}
@@ -1844,6 +2046,7 @@ async function renderStatsTab(b){
         ${card('متوسط التقييم ⭐', avgRating, '#075E54')}
         ${card('رسائل اليوم', msgsToday, '#17a2b8')}
         ${card('رسائل آخر 30 يوم', msgs30, '#6610f2')}
+        ${slaCard}
       </div>
       <div class="urow" style="background:#fff;">
         <div class="uri" style="flex:1;">
@@ -2235,6 +2438,8 @@ async function doLogin(){
   // تفعيل Push Notifications (iOS فقط)
   setupPush();
   updateCannedBtnVisibility();
+  updateBroadcastBtn();
+  startSchedulePoller();
   // حفظ الجلسة + كود الشركة لتعبئته تلقائياً المرة القادمة
   try{
     localStorage.setItem('tawasul_session', JSON.stringify({user_id:u.id, company_id:u.company_id}));
@@ -2276,7 +2481,8 @@ async function doLogout(){
   try{closeMsgMenu();}catch(e){}
   try{cancelReply();}catch(e){}
   try{cancelEdit();}catch(e){}
-  // امسح push token قبل تصفير الجلسة
+  // أوقف المؤقتات والـ push
+  try{stopSchedulePoller();}catch(e){}
   try{await clearPushToken();}catch(e){}
   // صفّر كل بيانات الجلسة
   me=null;curChat=null;myCompanyId=null;ct='dm';
@@ -2432,6 +2638,7 @@ async function openDM(uid){
   try{updateArchiveBtnLabel();}catch(e){}
   try{updateClientProfileBtn();}catch(e){}
   try{updateTicketBtn();}catch(e){}
+  try{updateScheduleBtn();}catch(e){}
   setTimeout(()=>{try{showRatingBannerIfNeeded();}catch(e){}}, 600);
   // إعادة رسم القائمة لإخفاء شارة عدم القراءة
   try{renderChatList();}catch(e){}
@@ -2470,6 +2677,7 @@ async function openG(gid){
   try{updateArchiveBtnLabel();}catch(e){}
   try{updateClientProfileBtn();}catch(e){}
   try{updateTicketBtn();}catch(e){}
+  try{updateScheduleBtn();}catch(e){}
   try{renderChatList();}catch(e){}
   // داخل المجموعة: العميل لا يستطيع رفع ملفات
   const ab=document.getElementById('msg-attach-btn');
@@ -3179,6 +3387,16 @@ async function apTab(tab,el){
         <div class="inote" style="margin-top:6px;">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#666" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><circle cx="12" cy="12" r="9"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
           ترسل تلقائياً للعميل لما يبعث لموظف خارج وقت الدوام
+        </div>
+      </div>
+
+      <div style="margin-top:18px;padding-top:14px;border-top:1px solid var(--bd);">
+        <div style="font-size:13px;font-weight:700;color:var(--t);margin-bottom:8px;">⏱️ SLA — وقت الرد المتوقع</div>
+        <div class="hrow"><label>الحد الأقصى (دقائق)</label><input type="number" id="sla-min" min="0" max="9999" value="${myCompany&&myCompany.sla_minutes||0}" style="width:100px;padding:6px;border:1px solid var(--bd);border-radius:8px;text-align:center;"/></div>
+        <button class="fsub" style="margin-top:8px;" onclick="saveSlaMinutes()">حفظ SLA</button>
+        <div class="inote" style="margin-top:6px;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#666" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><circle cx="12" cy="12" r="9"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          صفر = معطّل. التذاكر اللي تتجاوز هذا الوقت تظهر كتنبيه في الإحصائيات
         </div>
       </div>
       <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--bd);text-align:center;">
