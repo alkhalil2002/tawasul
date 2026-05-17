@@ -90,6 +90,17 @@ svg{display:inline-block;vertical-align:middle;flex-shrink:0;}
 .emoji-btn:hover{background:#f0f0f0;}
 #emoji-picker{flex-wrap:wrap;}
 
+/* البحث في الرسائل */
+.search-bar{display:none;align-items:center;gap:6px;padding:8px 10px;background:#fff;border-bottom:1px solid var(--bd);position:relative;z-index:5;}
+.search-bar.open{display:flex;}
+.search-bar input{flex:1;padding:7px 12px;border:1px solid var(--bd);border-radius:18px;font-size:13px;font-family:inherit;outline:none;background:#f7f7f7;}
+.search-bar input:focus{border-color:var(--bp);background:#fff;}
+.search-bar .sb-info{font-size:11px;color:var(--t2);min-width:42px;text-align:center;font-weight:600;}
+.search-bar .sb-nav,.search-bar .sb-close{padding:6px;background:none;border:none;cursor:pointer;color:var(--t2);border-radius:50%;display:flex;align-items:center;justify-content:center;}
+.search-bar .sb-nav:hover,.search-bar .sb-close:hover{background:#f0f0f0;color:var(--t);}
+.search-bar .sb-nav:disabled{opacity:.3;cursor:default;}
+.msg-search-hit{background:#fff3a0 !important;outline:2px solid #f9a825;outline-offset:-1px;}
+
 /* الردود الجاهزة */
 .canned-sheet{display:none;background:#fff;border-top:1px solid var(--bd);max-height:280px;overflow-y:auto;}
 .canned-sheet.open{display:block;}
@@ -497,8 +508,23 @@ textarea.fi{resize:none;font-family:inherit;}
           <button id="del-chat-btn" onclick="deleteCurrentChat()" style="display:none;" title="حذف المحادثة">
             <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.85)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
           </button>
-
+          <button id="search-chat-btn" onclick="toggleSearch()" title="بحث في الرسائل">
+            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.85)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          </button>
         </div>
+      </div>
+      <div class="search-bar" id="search-bar">
+        <input type="text" id="search-input" placeholder="ابحث في الرسائل..." oninput="onSearchInput()"/>
+        <span class="sb-info" id="sb-info"></span>
+        <button class="sb-nav" onclick="searchPrev()" title="السابق">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>
+        </button>
+        <button class="sb-nav" onclick="searchNext()" title="التالي">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
+        <button class="sb-close" onclick="closeSearch()" title="إغلاق">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
       </div>
       <div class="offb" id="offb">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#856404" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
@@ -1150,6 +1176,80 @@ async function loadLastMessages(){
 }
 
 // ==============================
+// MESSAGE SEARCH (البحث في الرسائل)
+// ==============================
+let _searchResults = [];
+let _searchIdx = -1;
+
+function toggleSearch(){
+  const sb=document.getElementById('search-bar');
+  if(!sb) return;
+  if(sb.classList.contains('open')){ closeSearch(); return; }
+  sb.classList.add('open');
+  setTimeout(()=>{ const i=document.getElementById('search-input'); if(i) i.focus(); }, 50);
+}
+
+function closeSearch(){
+  const sb=document.getElementById('search-bar');
+  if(sb) sb.classList.remove('open');
+  const inp=document.getElementById('search-input');
+  if(inp) inp.value='';
+  _searchResults=[]; _searchIdx=-1;
+  const info=document.getElementById('sb-info');
+  if(info) info.textContent='';
+  clearSearchHighlights();
+}
+
+function clearSearchHighlights(){
+  document.querySelectorAll('.msg-search-hit').forEach(el=>el.classList.remove('msg-search-hit'));
+}
+
+function onSearchInput(){
+  const inp=document.getElementById('search-input');
+  if(!inp) return;
+  const q=(inp.value||'').trim().toLowerCase();
+  clearSearchHighlights();
+  if(!q){
+    _searchResults=[]; _searchIdx=-1;
+    document.getElementById('sb-info').textContent='';
+    return;
+  }
+  _searchResults = (lastMsgs||[]).filter(m=>{
+    const t = ((m.text||'') + ' ' + (m.file_name||'')).toLowerCase();
+    return t.includes(q);
+  });
+  const info=document.getElementById('sb-info');
+  if(_searchResults.length){
+    _searchIdx = _searchResults.length - 1; // ابدأ من الأحدث (الأخير)
+    info.textContent = `${_searchIdx+1}/${_searchResults.length}`;
+    highlightSearchHit(_searchResults[_searchIdx].id);
+  } else {
+    info.textContent = 'لا نتائج';
+  }
+}
+
+function searchNext(){
+  if(!_searchResults.length) return;
+  _searchIdx = (_searchIdx+1) % _searchResults.length;
+  document.getElementById('sb-info').textContent = `${_searchIdx+1}/${_searchResults.length}`;
+  highlightSearchHit(_searchResults[_searchIdx].id);
+}
+function searchPrev(){
+  if(!_searchResults.length) return;
+  _searchIdx = (_searchIdx-1+_searchResults.length) % _searchResults.length;
+  document.getElementById('sb-info').textContent = `${_searchIdx+1}/${_searchResults.length}`;
+  highlightSearchHit(_searchResults[_searchIdx].id);
+}
+function highlightSearchHit(mid){
+  clearSearchHighlights();
+  const el = document.getElementById('msg-'+mid);
+  if(el){
+    el.classList.add('msg-search-hit');
+    el.scrollIntoView({behavior:'smooth', block:'center'});
+  }
+}
+
+// ==============================
 // AWAY AUTO-REPLY (رد تلقائي خارج الدوام)
 // ==============================
 // مفتاح بسيط لمنع تكرار الرد لنفس المحادثة في فترة قصيرة
@@ -1602,8 +1702,9 @@ function filterChats(v){const t=document.querySelector('.stab.active');t&&t.text
 async function openDM(uid){
   curChat=uid;ct='dm';showFiles=false;
   unreadCount[uid]=0;
-  // تنظيف حالات الرد/التعديل والقوائم
+  // تنظيف حالات الرد/التعديل والقوائم والبحث
   cancelReply();cancelEdit();closeMsgMenu();
+  try{closeSearch();}catch(e){}
   // إعادة رسم القائمة لإخفاء شارة عدم القراءة
   try{renderChatList();}catch(e){}
   // في المحادثات الخاصة الجميع يقدر يرفع ملفات
@@ -1637,6 +1738,7 @@ async function openG(gid){
   curChat=gid;ct='group';showFiles=false;
   unreadCount[gid]=0;
   cancelReply();cancelEdit();closeMsgMenu();
+  try{closeSearch();}catch(e){}
   try{renderChatList();}catch(e){}
   // داخل المجموعة: العميل لا يستطيع رفع ملفات
   const ab=document.getElementById('msg-attach-btn');
