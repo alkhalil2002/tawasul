@@ -90,6 +90,28 @@ svg{display:inline-block;vertical-align:middle;flex-shrink:0;}
 .emoji-btn:hover{background:#f0f0f0;}
 #emoji-picker{flex-wrap:wrap;}
 
+/* الردود الجاهزة */
+.canned-sheet{display:none;background:#fff;border-top:1px solid var(--bd);max-height:280px;overflow-y:auto;}
+.canned-sheet.open{display:block;}
+.canned-item{padding:10px 14px;border-bottom:1px solid #eee;cursor:pointer;display:flex;justify-content:space-between;align-items:flex-start;gap:8px;transition:background .12s;}
+.canned-item:hover{background:#f7f7f7;}
+.canned-item:last-of-type{border-bottom:none;}
+.canned-item .ci-body{flex:1;min-width:0;}
+.canned-item .ci-title{font-weight:700;font-size:13px;color:var(--t);margin-bottom:2px;}
+.canned-item .ci-text{font-size:12px;color:var(--t2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.canned-item .ci-del{padding:6px;background:none;border:none;cursor:pointer;color:#c33;flex-shrink:0;}
+.canned-empty{padding:24px 14px;text-align:center;color:var(--t2);font-size:13px;}
+.canned-add-btn{width:100%;padding:11px;border:none;background:#f4f4f4;color:var(--bp);font-weight:700;cursor:pointer;font-size:13px;border-top:1px solid var(--bd);}
+.canned-add-btn:hover{background:#eaeaea;}
+.canned-add-form{padding:12px 14px;background:#fafafa;border-top:1px solid var(--bd);display:none;}
+.canned-add-form.open{display:block;}
+.canned-add-form input,.canned-add-form textarea{width:100%;padding:8px 10px;border:1px solid var(--bd);border-radius:8px;font-size:13px;margin-bottom:6px;font-family:inherit;box-sizing:border-box;}
+.canned-add-form textarea{resize:vertical;min-height:60px;}
+.canned-add-form .row{display:flex;gap:6px;}
+.canned-add-form .row button{flex:1;padding:8px;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;}
+.canned-add-form .btn-save{background:var(--bp);color:#fff;}
+.canned-add-form .btn-cancel{background:#e0e0e0;color:#555;}
+
 /* منع اختيار النص أثناء الضغط الطويل */
 .mo, .mi{user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;}
 .fab:hover{transform:scale(1.05);box-shadow:0 6px 16px rgba(37,211,102,0.5);}
@@ -490,11 +512,15 @@ textarea.fi{resize:none;font-family:inherit;}
       <div id="inp-area">
         <div id="reply-bar" style="display:none;padding:6px 10px;background:#fff;border-top:1px solid #e0e0e0;align-items:center;gap:6px;"></div>
         <div id="emoji-picker" style="display:none;padding:8px;background:#fff;border-top:1px solid #e0e0e0;max-height:200px;overflow-y:auto;display:none;flex-wrap:wrap;gap:4px;"></div>
+        <div class="canned-sheet" id="canned-sheet"></div>
         <div class="inpr" id="inp-norm">
           <button class="sbtn" onclick="sendMsg()">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
           </button>
           <input type="text" placeholder="اكتب رسالة..." id="msg-inp" onkeydown="if(event.key==='Enter')sendMsg()"/>
+          <button id="canned-btn" onclick="toggleCannedSheet()" title="ردود جاهزة" style="display:none;padding:6px;background:none;border:none;cursor:pointer;">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#888" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+          </button>
           <button id="emoji-btn" onclick="toggleEmoji()" title="إيموجي" style="padding:6px;background:none;border:none;cursor:pointer;">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#888" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
           </button>
@@ -810,7 +836,7 @@ function disconnectRealtime(){
 // ==============================
 let me = null, curChat = null, ct = 'dm', lt = 'staff';
 let myCompanyId = null;
-let allUsers = [], allGroups = [], allTemplates = [], allCompanies = [], settings = {work_start:8, work_end:17, work_days:[0,1,2,3,4]};
+let allUsers = [], allGroups = [], allTemplates = [], allCompanies = [], allCannedResponses = [], settings = {work_start:8, work_end:17, work_days:[0,1,2,3,4]};
 let msgTimeCache = {}, lastMsgPreview = {}, lastMsgTime = {}, unreadCount = {};
 let selMembers = [], selTpl = null, cs = [], cfs = null, nts = [];
 let showFiles = false, msgCache = {};
@@ -973,6 +999,7 @@ async function boot(){
           me=u[0];
           myCompanyId=me.company_id;
           setupPush();
+          updateCannedBtnVisibility();
           if(me.role==='super_admin'){
             await loadSuperAdminData();
             showSc('superadmin');
@@ -1011,6 +1038,7 @@ async function loadCompanyData(forceRefresh=false){
         if(c.users)allUsers=c.users;
         if(c.groups)allGroups=c.groups;
         if(c.templates)allTemplates=c.templates;
+        if(c.canned)allCannedResponses=c.canned;
         if(c.settings)settings=c.settings;
         cacheUsed = true;
       }
@@ -1020,16 +1048,18 @@ async function loadCompanyData(forceRefresh=false){
   // 2) جلب من الشبكة (في الخلفية لو cache كان موجود)
   const fetchAll = async () => {
     try{
-      const [u,g,t,s] = await Promise.all([
+      const [u,g,t,s,cr] = await Promise.all([
         sbGet('users',_cq('order=created_at')),
         sbGet('groups',_cq('order=created_at')),
         sbGet('templates',_cq('order=created_at')),
-        sbGet('settings','id=eq.1')
+        sbGet('settings','id=eq.1'),
+        sbGet('canned_responses',_cq('order=created_at'))
       ]);
       if(Array.isArray(u)) allUsers=u;
       if(Array.isArray(g)) allGroups=g;
       if(Array.isArray(t)) allTemplates=t;
       if(s&&s[0]) settings=s[0];
+      if(Array.isArray(cr)) allCannedResponses=cr;
       await Promise.all(allGroups.map(async gr=>{
         try{
           const mems=await sbGet('group_members',`group_id=eq.${gr.id}&select=user_id`);
@@ -1038,7 +1068,7 @@ async function loadCompanyData(forceRefresh=false){
       }));
       try{
         localStorage.setItem('tawasul_cache_'+myCompanyId, JSON.stringify({
-          users:allUsers, groups:allGroups, templates:allTemplates, settings, ts:Date.now()
+          users:allUsers, groups:allGroups, templates:allTemplates, canned:allCannedResponses, settings, ts:Date.now()
         }));
       }catch(e){}
       // أعد رسم القائمة لو المستخدم في الشاشة الرئيسية
@@ -1114,6 +1144,117 @@ async function loadLastMessages(){
       }
     });
   } catch(e){}
+}
+
+// ==============================
+// CANNED RESPONSES (ردود جاهزة)
+// ==============================
+function canManageCanned(){ return me && (me.role==='admin' || me.role==='supervisor'); }
+function canUseCanned(){ return me && me.role!=='client'; }
+
+function updateCannedBtnVisibility(){
+  const b=document.getElementById('canned-btn');
+  if(!b) return;
+  b.style.display = canUseCanned() ? '' : 'none';
+}
+
+function toggleCannedSheet(){
+  const sh=document.getElementById('canned-sheet');
+  if(!sh) return;
+  if(sh.classList.contains('open')){ sh.classList.remove('open'); return; }
+  // أغلق أي بانل آخر
+  const ep=document.getElementById('emoji-picker'); if(ep) ep.style.display='none';
+  renderCannedSheet();
+  sh.classList.add('open');
+}
+
+function renderCannedSheet(){
+  const sh=document.getElementById('canned-sheet');
+  if(!sh) return;
+  const list = allCannedResponses || [];
+  const manage = canManageCanned();
+  let html = '';
+  if(list.length===0){
+    html += `<div class="canned-empty">لا توجد ردود جاهزة بعد${manage?'<br><span style="font-size:11px;">أضف رد جديد بالأسفل</span>':''}</div>`;
+  } else {
+    html += list.map(c=>`
+      <div class="canned-item" onclick="useCanned('${esc(c.id)}')">
+        <div class="ci-body">
+          <div class="ci-title">${esc(c.title||'')}</div>
+          <div class="ci-text">${esc(c.text||'')}</div>
+        </div>
+        ${manage?`<button class="ci-del" onclick="event.stopPropagation();delCanned('${esc(c.id)}')" title="حذف">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/></svg>
+        </button>`:''}
+      </div>`).join('');
+  }
+  if(manage){
+    html += `
+      <button class="canned-add-btn" onclick="toggleCannedAddForm()">+ إضافة رد جديد</button>
+      <div class="canned-add-form" id="canned-add-form">
+        <input type="text" id="ca-title" placeholder="عنوان مختصر (مثل: ترحيب)" maxlength="60"/>
+        <textarea id="ca-text" placeholder="نص الرد كاملاً..." maxlength="500"></textarea>
+        <div class="row">
+          <button class="btn-save" onclick="saveCanned()">حفظ</button>
+          <button class="btn-cancel" onclick="toggleCannedAddForm()">إلغاء</button>
+        </div>
+      </div>`;
+  }
+  sh.innerHTML = html;
+}
+
+function toggleCannedAddForm(){
+  const f=document.getElementById('canned-add-form');
+  if(!f) return;
+  f.classList.toggle('open');
+  if(f.classList.contains('open')){
+    setTimeout(()=>{ const t=document.getElementById('ca-title'); if(t) t.focus(); }, 50);
+  } else {
+    const t=document.getElementById('ca-title'); if(t) t.value='';
+    const x=document.getElementById('ca-text'); if(x) x.value='';
+  }
+}
+
+async function saveCanned(){
+  const titleEl=document.getElementById('ca-title');
+  const textEl=document.getElementById('ca-text');
+  if(!titleEl||!textEl) return;
+  const title=(titleEl.value||'').trim();
+  const text=(textEl.value||'').trim();
+  if(!title){ showToast('اكتب عنوان للرد'); return; }
+  if(!text){ showToast('اكتب نص الرد'); return; }
+  try{
+    const row = await sbPost('canned_responses', {
+      company_id: myCompanyId,
+      title, text,
+      created_by: me.id
+    });
+    const created = Array.isArray(row)?row[0]:row;
+    if(created && created.id){ allCannedResponses.push(created); }
+    renderCannedSheet();
+    showToast('تم إضافة الرد');
+  }catch(e){ showToast('فشل الحفظ'); }
+}
+
+async function delCanned(id){
+  if(!confirm('حذف هذا الرد الجاهز؟')) return;
+  try{
+    await sbDelete('canned_responses', _cq('id=eq.'+id));
+    allCannedResponses = allCannedResponses.filter(c=>c.id!==id);
+    renderCannedSheet();
+  }catch(e){ showToast('فشل الحذف'); }
+}
+
+function useCanned(id){
+  const c = (allCannedResponses||[]).find(x=>x.id===id);
+  if(!c) return;
+  const inp=document.getElementById('msg-inp');
+  if(!inp) return;
+  inp.value = c.text || '';
+  document.getElementById('canned-sheet').classList.remove('open');
+  inp.focus();
+  // ضع المؤشر في النهاية
+  try{ inp.setSelectionRange(inp.value.length, inp.value.length); }catch(e){}
 }
 
 // ==============================
@@ -1242,6 +1383,7 @@ async function doLogin(){
   myCompanyId=u.company_id;
   // تفعيل Push Notifications (iOS فقط)
   setupPush();
+  updateCannedBtnVisibility();
   // حفظ الجلسة + كود الشركة لتعبئته تلقائياً المرة القادمة
   try{
     localStorage.setItem('tawasul_session', JSON.stringify({user_id:u.id, company_id:u.company_id}));
@@ -1255,6 +1397,7 @@ async function doLogin(){
       if(c.users)allUsers=c.users;
       if(c.groups)allGroups=c.groups;
       if(c.templates)allTemplates=c.templates;
+      if(c.canned)allCannedResponses=c.canned;
       if(c.settings)settings=c.settings;
     }
   }catch(e){}
@@ -1285,7 +1428,7 @@ async function doLogout(){
   try{await clearPushToken();}catch(e){}
   // صفّر كل بيانات الجلسة
   me=null;curChat=null;myCompanyId=null;ct='dm';
-  allUsers=[];allGroups=[];allTemplates=[];allCompanies=[];
+  allUsers=[];allGroups=[];allTemplates=[];allCompanies=[];allCannedResponses=[];
   settings={work_start:8, work_end:17, work_days:[0,1,2,3,4]};
   msgTimeCache={};lastMsgPreview={};lastMsgTime={};unreadCount={};
   msgCache={};lastMsgs=[];
