@@ -963,79 +963,242 @@ async function sbDelete(table, query){
 // Real-time via Supabase Realtime WebSocket
 let realtimeWs = null;
 let _realtimeWanted = false;
+let _heartbeatTimer = null;
+
 function connectRealtime(){
-  // لا تشغّل Realtime للسوبر أدمن أو بدون شركة
   if(!me || me.role==='super_admin' || !myCompanyId) return;
   _realtimeWanted = true;
+  if(realtimeWs && realtimeWs.readyState === WebSocket.OPEN) return;
   const wsUrl = SUPA_URL.replace('https','wss') + '/realtime/v1/websocket?apikey=' + SUPA_KEY + '&vsn=1.0.0';
   realtimeWs = new WebSocket(wsUrl);
+
   realtimeWs.onopen = () => {
-    realtimeWs.send(JSON.stringify({topic:'realtime:public:messages',event:'phx_join',payload:{},ref:'1'}));
-    // استمع لـ UPDATE أيضاً
-    realtimeWs.send(JSON.stringify({topic:'realtime:public:messages',event:'phx_join',payload:{config:{broadcast:{self:true},presence:{key:''}}},ref:'2'}));
+    // Realtime V2 — postgres_changes subscription
+    realtimeWs.send(JSON.stringify({
+      topic: 'realtime:tawasul-' + myCompanyId,
+      event: 'phx_join',
+      payload: {
+        config: {
+          broadcast: { self: false },
+          presence: { key: '' },
+          postgres_changes: [
+            { event: '*', schema: 'public', table: 'messages' },
+            { event: '*', schema: 'public', table: 'groups' },
+            { event: '*', schema: 'public', table: 'group_members' },
+            { event: '*', schema: 'public', table: 'tickets' },
+            { event: '*', schema: 'public', table: 'users' },
+            { event: '*', schema: 'public', table: 'canned_responses' },
+            { event: '*', schema: 'public', table: 'chat_archives' },
+            { event: '*', schema: 'public', table: 'companies' }
+          ]
+        }
+      },
+      ref: '1'
+    }));
+    // Heartbeat كل 25 ثانية
+    if(_heartbeatTimer) clearInterval(_heartbeatTimer);
+    _heartbeatTimer = setInterval(()=>{
+      if(realtimeWs && realtimeWs.readyState===WebSocket.OPEN){
+        realtimeWs.send(JSON.stringify({topic:'phoenix', event:'heartbeat', payload:{}, ref:'hb'+Date.now()}));
+      }
+    }, 25000);
   };
+
   realtimeWs.onmessage = (e) => {
     try {
-      if(!me || !myCompanyId) return; // تجاهل لو لا توجد جلسة
+      if(!me || !myCompanyId) return;
       const msg = JSON.parse(e.data);
-      if(msg.event === 'INSERT' && msg.payload && msg.payload.record){
-        const rec = msg.payload.record;
-        // تجاهل الرسائل التي لا تخص شركتنا (حماية صارمة)
-        if(rec.company_id !== myCompanyId) return;
-        if(curChat && (
-          (ct==='dm' && ((rec.from_user===curChat && rec.to_user===me.id)||(rec.from_user===me.id && rec.to_user===curChat))) ||
-          (ct==='group' && rec.group_id===curChat)
-        )){
-          loadMessages();
-          // لو الرسالة واردة علينا نضع read_at فوراً
-          if((rec.to_user===me.id||rec.group_id===curChat) && rec.from_user!==me.id){
-            markAsRead();
-          }
-          // إشعار للرسائل الواردة
-          if(rec.from_user!==me.id){
-            const sender=allUsers.find(x=>x.id===rec.from_user);
-            const grp=rec.group_id?allGroups.find(g=>g.id===rec.group_id):null;
-            const title=grp?grp.name:(sender?sender.name:'رسالة جديدة');
-            const body=rec.type==='image'?'📷 صورة':rec.type==='file'?'📎 ملف':(rec.text.length>60?rec.text.substring(0,60)+'...':rec.text);
-            sendNotif(title, body);
-          }
-        } else {
-          // رسالة في محادثة غير مفتوحة الآن → زيادة العداد
-          if(rec.from_user!==me?.id){
-            const chatId=rec.group_id||(rec.to_user===me?.id?rec.from_user:null);
-            if(chatId){
-              unreadCount[chatId]=(unreadCount[chatId]||0)+1;
-            }
-          }
-          loadLastMessages();
-          renderChatList();
-        }
-      }
-      // تحديث علامات الوصول والقراءة + التعديلات
-      if(msg.event === 'UPDATE' && msg.payload && msg.payload.record){
-        const rec = msg.payload.record;
-        if(rec.company_id !== myCompanyId) return;
-        if(curChat && (
-          (ct==='dm' && (rec.from_user===curChat || rec.to_user===curChat)) ||
-          (ct==='group' && rec.group_id===curChat)
-        )){
-          loadMessages();
-        }
-      }
+      if(msg.event !== 'postgres_changes' || !msg.payload || !msg.payload.data) return;
+      const d = msg.payload.data;
+      const tbl = d.table;
+      const type = d.type; // INSERT | UPDATE | DELETE
+      const rec = d.record;
+      const oldRec = d.old_record;
+      // فلتر شركة (دفاعياً)
+      const recCompany = (rec && rec.company_id) || (oldRec && oldRec.company_id);
+      if(recCompany && recCompany !== myCompanyId) return;
+      handleRealtimeChange(tbl, type, rec, oldRec);
     } catch(err){}
   };
-  realtimeWs.onerror = (e) => { console.warn('realtime ws error', e); };
+
+  realtimeWs.onerror = (e) => { console.warn('rt error', e); };
   realtimeWs.onclose = () => {
     realtimeWs = null;
+    if(_heartbeatTimer){ clearInterval(_heartbeatTimer); _heartbeatTimer = null; }
     if(_realtimeWanted){ setTimeout(connectRealtime, 3000); }
   };
 }
 
 function disconnectRealtime(){
   _realtimeWanted = false;
+  if(_heartbeatTimer){ clearInterval(_heartbeatTimer); _heartbeatTimer = null; }
   if(realtimeWs){
     try{ realtimeWs.close(); }catch(e){}
     realtimeWs = null;
+  }
+}
+
+function handleRealtimeChange(table, type, rec, oldRec){
+  try{
+    if(table === 'messages') return _rtMsg(type, rec, oldRec);
+    if(table === 'groups') return _rtGroup(type, rec, oldRec);
+    if(table === 'group_members') return _rtGroupMember(type, rec, oldRec);
+    if(table === 'tickets') return _rtTicket(type, rec, oldRec);
+    if(table === 'users') return _rtUser(type, rec, oldRec);
+    if(table === 'canned_responses') return _rtCanned(type, rec, oldRec);
+    if(table === 'chat_archives') return _rtArchive(type, rec, oldRec);
+    if(table === 'companies') return _rtCompany(type, rec, oldRec);
+  }catch(e){}
+}
+
+function _rtMsg(type, rec, oldRec){
+  if(type === 'INSERT' && rec){
+    const inCurrent = curChat && (
+      (ct==='dm' && ((rec.from_user===curChat && rec.to_user===me.id)||(rec.from_user===me.id && rec.to_user===curChat))) ||
+      (ct==='group' && rec.group_id===curChat)
+    );
+    if(inCurrent){
+      loadMessages();
+      if((rec.to_user===me.id || rec.group_id===curChat) && rec.from_user!==me.id) markAsRead();
+      if(rec.from_user !== me.id){
+        const sender = allUsers.find(x=>x.id===rec.from_user);
+        const grp = rec.group_id ? allGroups.find(g=>g.id===rec.group_id) : null;
+        const title = grp ? grp.name : (sender?sender.name:'رسالة جديدة');
+        const body = rec.type==='image'?'📷 صورة':rec.type==='file'?'📎 ملف':((rec.text||'').substring(0,60));
+        try{ sendNotif(title, body); }catch(e){}
+      }
+    } else {
+      if(rec.from_user !== me.id){
+        const chatId = rec.group_id || (rec.to_user===me.id ? rec.from_user : null);
+        if(chatId) unreadCount[chatId] = (unreadCount[chatId]||0)+1;
+      }
+      loadLastMessages();
+      try{ renderChatList(); }catch(e){}
+    }
+  } else if(type === 'UPDATE' && rec){
+    if(curChat && (
+      (ct==='dm' && (rec.from_user===curChat || rec.to_user===curChat)) ||
+      (ct==='group' && rec.group_id===curChat)
+    )) loadMessages();
+  } else if(type === 'DELETE'){
+    if(curChat) loadMessages();
+    try{ renderChatList(); }catch(e){}
+  }
+}
+
+function _rtGroup(type, rec, oldRec){
+  if(type === 'INSERT' && rec){
+    if(!allGroups.find(g=>g.id===rec.id)){
+      rec.members = rec.members || [];
+      allGroups.push(rec);
+    }
+  } else if(type === 'UPDATE' && rec){
+    const idx = allGroups.findIndex(g=>g.id===rec.id);
+    if(idx>=0){
+      const oldM = allGroups[idx].members;
+      allGroups[idx] = {...rec, members: oldM};
+    }
+  } else if(type === 'DELETE'){
+    const id = (oldRec||rec||{}).id;
+    if(id){
+      allGroups = allGroups.filter(g=>g.id!==id);
+      if(curChat===id){ curChat=null; ct='dm'; showSc('main'); }
+    }
+  }
+  try{ renderChatList(); }catch(e){}
+}
+
+function _rtGroupMember(type, rec, oldRec){
+  const t = rec || oldRec;
+  if(!t || !t.group_id) return;
+  const g = allGroups.find(x=>x.id===t.group_id);
+  if(type === 'INSERT' && rec){
+    if(g){
+      if(!(g.members||[]).includes(rec.user_id)) g.members = [...(g.members||[]), rec.user_id];
+    } else if(rec.user_id === me.id){
+      // أنا أُضفت لمجموعة لم تكن محملة → إعادة جلب
+      sbGet('groups',_cq('id=eq.'+rec.group_id)).then(rows=>{
+        if(Array.isArray(rows) && rows[0]){
+          rows[0].members = [me.id];
+          allGroups.push(rows[0]);
+          renderChatList();
+        }
+      }).catch(()=>{});
+      return;
+    }
+  } else if(type === 'DELETE'){
+    if(g){
+      g.members = (g.members||[]).filter(id=>id!==t.user_id);
+      // أُزلت من المجموعة الحالية → اخرج
+      if(t.user_id===me.id && curChat===g.id){
+        curChat=null; ct='dm'; showSc('main');
+      }
+    }
+  }
+  try{ renderChatList(); }catch(e){}
+}
+
+function _rtTicket(type, rec, oldRec){
+  if(type === 'INSERT' && rec){
+    if(!allTickets.find(t=>t.id===rec.id)) allTickets.unshift(rec);
+  } else if(type === 'UPDATE' && rec){
+    const idx = allTickets.findIndex(t=>t.id===rec.id);
+    if(idx>=0) allTickets[idx] = rec;
+  } else if(type === 'DELETE'){
+    const id = (oldRec||rec||{}).id;
+    if(id) allTickets = allTickets.filter(t=>t.id!==id);
+  }
+  try{ renderChatList(); }catch(e){}
+}
+
+function _rtUser(type, rec, oldRec){
+  if(type === 'INSERT' && rec){
+    if(!allUsers.find(u=>u.id===rec.id)) allUsers.push(rec);
+  } else if(type === 'UPDATE' && rec){
+    const idx = allUsers.findIndex(u=>u.id===rec.id);
+    if(idx>=0){
+      allUsers[idx] = rec;
+      if(me && rec.id===me.id){
+        if(rec.is_blocked){ disconnectRealtime(); doLogout(); return; }
+        me = {...me, ...rec};
+      }
+    }
+  } else if(type === 'DELETE'){
+    const id = (oldRec||rec||{}).id;
+    if(id) allUsers = allUsers.filter(u=>u.id!==id);
+  }
+  try{ renderChatList(); }catch(e){}
+}
+
+function _rtCanned(type, rec, oldRec){
+  if(type === 'INSERT' && rec){
+    if(!allCannedResponses.find(c=>c.id===rec.id)) allCannedResponses.push(rec);
+  } else if(type === 'UPDATE' && rec){
+    const idx = allCannedResponses.findIndex(c=>c.id===rec.id);
+    if(idx>=0) allCannedResponses[idx] = rec;
+  } else if(type === 'DELETE'){
+    const id = (oldRec||rec||{}).id;
+    if(id) allCannedResponses = allCannedResponses.filter(c=>c.id!==id);
+  }
+  const sh = document.getElementById('canned-sheet');
+  if(sh && sh.classList.contains('open')) try{ renderCannedSheet(); }catch(e){}
+}
+
+function _rtArchive(type, rec, oldRec){
+  const t = rec || oldRec;
+  if(!t || t.user_id !== me.id) return;
+  if(type === 'INSERT' && rec){
+    if(!myArchives.find(a=>a.id===rec.id)) myArchives.push(rec);
+  } else if(type === 'DELETE'){
+    const id = (oldRec||rec||{}).id;
+    if(id) myArchives = myArchives.filter(a=>a.id!==id);
+  }
+  try{ renderChatList(); }catch(e){}
+}
+
+function _rtCompany(type, rec, oldRec){
+  if(type === 'UPDATE' && rec && rec.id === myCompanyId){
+    myCompany = rec;
   }
 }
 
