@@ -106,6 +106,14 @@ svg{display:inline-block;vertical-align:middle;flex-shrink:0;}
 .arch-banner{padding:8px 14px;background:#fff3cd;border-bottom:1px solid #ffe69c;font-size:12px;color:#856404;display:flex;align-items:center;gap:8px;}
 .arch-banner svg{flex-shrink:0;}
 
+/* banner كود الشركة */
+.company-code-banner{margin:10px 12px 4px;padding:12px 14px;background:linear-gradient(135deg,#075E54,#128C7E);color:#fff;border-radius:14px;display:flex;align-items:center;justify-content:space-between;gap:10px;box-shadow:0 2px 8px rgba(7,94,84,.25);}
+.company-code-banner .ccb-info{flex:1;min-width:0;}
+.company-code-banner .ccb-label{font-size:11px;opacity:.9;}
+.company-code-banner .ccb-code{font-size:20px;font-weight:800;font-family:'SF Mono',Menlo,monospace;letter-spacing:2px;margin-top:3px;text-shadow:0 1px 2px rgba(0,0,0,.15);}
+.company-code-banner .ccb-copy{padding:9px 14px;background:rgba(255,255,255,.22);color:#fff;border:1.5px solid rgba(255,255,255,.35);border-radius:10px;font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:5px;flex-shrink:0;transition:background .15s;}
+.company-code-banner .ccb-copy:hover{background:rgba(255,255,255,.35);}
+
 /* طلب جديد — اختيار النوع */
 .req-type-card{padding:12px 8px;border:1.5px solid var(--bd);border-radius:12px;background:#fff;cursor:pointer;text-align:center;font-size:12px;font-weight:600;color:var(--t);transition:all .15s;display:flex;flex-direction:column;align-items:center;gap:4px;}
 .req-type-card:hover{border-color:var(--bp);background:#f7fbf9;}
@@ -751,6 +759,7 @@ textarea.fi{resize:none;font-family:inherit;}
       <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.85)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
     </button>
   </div>
+  <div id="company-code-banner-wrap"></div>
   <div class="aptabs">
     <div class="aptab active" onclick="apTab('staff',this)">الموظفون</div>
     <div class="aptab" onclick="apTab('clients',this)">العملاء</div>
@@ -3511,15 +3520,60 @@ async function savePR(){
 // ==============================
 function goAdmin(){
   showSc('admin');
+  // banner كود الشركة (للمدير + المشرف)
+  renderCompanyCodeBanner();
   // أعد بناء التبويبات حسب الدور
   document.querySelector('.aptabs').innerHTML=`
     <div class="aptab active" onclick="apTab('staff',this)">الموظفون</div>
     <div class="aptab" onclick="apTab('clients',this)">العملاء</div>
     <div class="aptab" onclick="apTab('templates',this)">قوالب الملفات</div>
     ${me.role==='admin'?'<div class="aptab" onclick="apTab(\'hours\',this)">أوقات الدوام</div>':''}
+    ${me.role==='admin'?'<div class="aptab" onclick="apTab(\'stats\',this)">إحصائيات</div>':''}
+    ${me.role==='admin'?'<div class="aptab" onclick="apTab(\'audit\',this)">سجل النشاط</div>':''}
     ${me.role==='admin'?'<div class="aptab" onclick="apTab(\'backups\',this)">النسخ الاحتياطي</div>':''}
   `;
   apTab('staff',document.querySelector('.aptab'));
+}
+
+function renderCompanyCodeBanner(){
+  const wrap = document.getElementById('company-code-banner-wrap');
+  if(!wrap) return;
+  if(!myCompany || !myCompany.slug || me.role==='client'){
+    wrap.innerHTML = '';
+    return;
+  }
+  wrap.innerHTML = `
+    <div class="company-code-banner">
+      <div class="ccb-info">
+        <div class="ccb-label">🔑 كود الشركة — شاركه مع موظفيك وعملائك ليسجلوا الدخول</div>
+        <div class="ccb-code">${esc(myCompany.slug.toUpperCase())}</div>
+      </div>
+      <button class="ccb-copy" onclick="copyCompanyCode()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+        نسخ
+      </button>
+    </div>`;
+}
+
+function copyCompanyCode(){
+  if(!myCompany || !myCompany.slug){ showToast('كود الشركة غير متوفر'); return; }
+  const code = myCompany.slug;
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(code).then(()=>{
+      showToast('✓ تم نسخ الكود: '+code);
+    }).catch(()=>{ fallbackCopy(code); });
+  } else {
+    fallbackCopy(code);
+  }
+}
+
+function fallbackCopy(text){
+  const ta = document.createElement('textarea');
+  ta.value = text; ta.style.position='fixed'; ta.style.opacity='0';
+  document.body.appendChild(ta); ta.select();
+  try{ document.execCommand('copy'); showToast('✓ تم نسخ الكود: '+text); }
+  catch(e){ showToast('انسخ يدوياً: '+text); }
+  document.body.removeChild(ta);
 }
 function goBack(){showSc('main');renderChatList();}
 
