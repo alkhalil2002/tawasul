@@ -101,6 +101,11 @@ svg{display:inline-block;vertical-align:middle;flex-shrink:0;}
 .search-bar .sb-nav:disabled{opacity:.3;cursor:default;}
 .msg-search-hit{background:#fff3a0 !important;outline:2px solid #f9a825;outline-offset:-1px;}
 
+/* الأرشيف */
+.ibtn.arch-active{background:rgba(255,255,255,.28) !important;}
+.arch-banner{padding:8px 14px;background:#fff3cd;border-bottom:1px solid #ffe69c;font-size:12px;color:#856404;display:flex;align-items:center;gap:8px;}
+.arch-banner svg{flex-shrink:0;}
+
 /* الردود الجاهزة */
 .canned-sheet{display:none;background:#fff;border-top:1px solid var(--bd);max-height:280px;overflow-y:auto;}
 .canned-sheet.open{display:block;}
@@ -476,6 +481,9 @@ textarea.fi{resize:none;font-family:inherit;}
     <div class="stabs" id="stabs"></div>
     <div class="sbox">
       <input type="text" placeholder="ابحث..." oninput="filterChats(this.value)"/>
+      <button class="ibtn" id="arch-toggle" onclick="toggleArchiveView()" title="الأرشيف">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/></svg>
+      </button>
       <button class="ibtn" id="grp-btn" onclick="openNewGroup()" style="display:none;" title="مجموعة جديدة">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="7" r="4"/><path d="M3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2M16 11h6M19 8v6"/></svg>
       </button>
@@ -510,6 +518,9 @@ textarea.fi{resize:none;font-family:inherit;}
           </button>
           <button id="search-chat-btn" onclick="toggleSearch()" title="بحث في الرسائل">
             <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.85)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          </button>
+          <button id="arch-chat-btn" onclick="toggleArchiveCurrent()" title="أرشفة المحادثة">
+            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.85)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/></svg>
           </button>
         </div>
       </div>
@@ -862,7 +873,7 @@ function disconnectRealtime(){
 // ==============================
 let me = null, curChat = null, ct = 'dm', lt = 'staff';
 let myCompanyId = null;
-let allUsers = [], allGroups = [], allTemplates = [], allCompanies = [], allCannedResponses = [], myCompany = null, settings = {work_start:8, work_end:17, work_days:[0,1,2,3,4]};
+let allUsers = [], allGroups = [], allTemplates = [], allCompanies = [], allCannedResponses = [], myCompany = null, myArchives = [], _showArchive = false, settings = {work_start:8, work_end:17, work_days:[0,1,2,3,4]};
 let msgTimeCache = {}, lastMsgPreview = {}, lastMsgTime = {}, unreadCount = {};
 let selMembers = [], selTpl = null, cs = [], cfs = null, nts = [];
 let showFiles = false, msgCache = {};
@@ -1075,13 +1086,14 @@ async function loadCompanyData(forceRefresh=false){
   // 2) جلب من الشبكة (في الخلفية لو cache كان موجود)
   const fetchAll = async () => {
     try{
-      const [u,g,t,s,cr,co] = await Promise.all([
+      const [u,g,t,s,cr,co,arch] = await Promise.all([
         sbGet('users',_cq('order=created_at')),
         sbGet('groups',_cq('order=created_at')),
         sbGet('templates',_cq('order=created_at')),
         sbGet('settings','id=eq.1'),
         sbGet('canned_responses',_cq('order=created_at')),
-        sbGet('companies','id=eq.'+myCompanyId)
+        sbGet('companies','id=eq.'+myCompanyId),
+        sbGet('chat_archives',_cq('user_id=eq.'+me.id))
       ]);
       if(Array.isArray(u)) allUsers=u;
       if(Array.isArray(g)) allGroups=g;
@@ -1089,6 +1101,7 @@ async function loadCompanyData(forceRefresh=false){
       if(s&&s[0]) settings=s[0];
       if(Array.isArray(cr)) allCannedResponses=cr;
       if(Array.isArray(co)&&co[0]) myCompany=co[0];
+      if(Array.isArray(arch)) myArchives=arch;
       await Promise.all(allGroups.map(async gr=>{
         try{
           const mems=await sbGet('group_members',`group_id=eq.${gr.id}&select=user_id`);
@@ -1173,6 +1186,58 @@ async function loadLastMessages(){
       }
     });
   } catch(e){}
+}
+
+// ==============================
+// CHAT ARCHIVE (الأرشفة)
+// ==============================
+function isArchived(type, id){
+  return (myArchives||[]).some(a=>a.chat_type===type && a.chat_id===id);
+}
+
+async function toggleArchiveView(){
+  _showArchive = !_showArchive;
+  const btn=document.getElementById('arch-toggle');
+  if(btn){
+    btn.classList.toggle('arch-active', _showArchive);
+    btn.title = _showArchive ? 'العودة للمحادثات' : 'الأرشيف';
+  }
+  try{ renderChatList(); }catch(e){}
+}
+
+async function toggleArchiveCurrent(){
+  if(!curChat || !me) return;
+  const type = ct;
+  const id = curChat;
+  const existing = (myArchives||[]).find(a=>a.chat_type===type && a.chat_id===id);
+  try{
+    if(existing){
+      await sbDelete('chat_archives', _cq('id=eq.'+existing.id));
+      myArchives = myArchives.filter(a=>a.id!==existing.id);
+      showToast('تم استرجاع المحادثة');
+    } else {
+      const row = await sbPost('chat_archives', {
+        user_id: me.id,
+        company_id: myCompanyId,
+        chat_type: type,
+        chat_id: id
+      });
+      const created = Array.isArray(row)?row[0]:row;
+      if(created && created.id) myArchives.push(created);
+      showToast('تم أرشفة المحادثة');
+      // اخرج للقائمة إذا على موبايل
+      if(typeof goBackToList === 'function' && isMobile()) goBackToList();
+    }
+    try{ renderChatList(); }catch(e){}
+    updateArchiveBtnLabel();
+  }catch(e){ showToast('فشل العملية'); }
+}
+
+function updateArchiveBtnLabel(){
+  const btn = document.getElementById('arch-chat-btn');
+  if(!btn || !curChat) return;
+  const archived = isArchived(ct, curChat);
+  btn.title = archived ? 'إلغاء الأرشفة' : 'أرشفة المحادثة';
 }
 
 // ==============================
@@ -1569,7 +1634,7 @@ async function doLogout(){
   try{await clearPushToken();}catch(e){}
   // صفّر كل بيانات الجلسة
   me=null;curChat=null;myCompanyId=null;ct='dm';
-  allUsers=[];allGroups=[];allTemplates=[];allCompanies=[];allCannedResponses=[];myCompany=null;
+  allUsers=[];allGroups=[];allTemplates=[];allCompanies=[];allCannedResponses=[];myCompany=null;myArchives=[];_showArchive=false;
   settings={work_start:8, work_end:17, work_days:[0,1,2,3,4]};
   msgTimeCache={};lastMsgPreview={};lastMsgTime={};unreadCount={};
   msgCache={};lastMsgs=[];
@@ -1633,12 +1698,16 @@ function renderChatList(filter){
 
   // أضف المحادثات الفردية
   getVisibleUsers().filter(matchUser).forEach(u=>{
+    const arch = isArchived('dm', u.id);
+    if(_showArchive ? !arch : arch) return;
     const lastTime=msgTimeCache[u.id]||0;
     items.push({type:'dm',id:u.id,user:u,lastTime});
   });
 
   // أضف المجموعات
   getMyGroups().filter(matchGroup).forEach(g=>{
+    const arch = isArchived('group', g.id);
+    if(_showArchive ? !arch : arch) return;
     const lastTime=msgTimeCache[g.id]||0;
     items.push({type:'group',id:g.id,group:g,lastTime});
   });
@@ -1646,6 +1715,9 @@ function renderChatList(filter){
   // رتّب حسب آخر رسالة (الأحدث أولاً)
   items.sort((a,b)=>b.lastTime-a.lastTime);
 
+  const emptyMsg = _showArchive
+    ? '<div style="text-align:center;padding:40px;font-size:13px;color:var(--t3);">لا توجد محادثات مؤرشفة</div>'
+    : '<div style="text-align:center;padding:40px;font-size:13px;color:var(--t3);">لا توجد محادثات</div>';
   document.getElementById('clist').innerHTML=items.length?items.map(item=>{
     if(item.type==='dm'){
       const u=item.user;
@@ -1675,7 +1747,7 @@ function renderChatList(filter){
         </div>
       </div>`;
     }
-  }).join(''):`<div style="text-align:center;padding:40px;font-size:13px;color:var(--t3);">لا توجد محادثات</div>`;
+  }).join(''):emptyMsg;
 }
 
 function renderGroupList(filter){
@@ -1705,6 +1777,7 @@ async function openDM(uid){
   // تنظيف حالات الرد/التعديل والقوائم والبحث
   cancelReply();cancelEdit();closeMsgMenu();
   try{closeSearch();}catch(e){}
+  try{updateArchiveBtnLabel();}catch(e){}
   // إعادة رسم القائمة لإخفاء شارة عدم القراءة
   try{renderChatList();}catch(e){}
   // في المحادثات الخاصة الجميع يقدر يرفع ملفات
@@ -1739,6 +1812,7 @@ async function openG(gid){
   unreadCount[gid]=0;
   cancelReply();cancelEdit();closeMsgMenu();
   try{closeSearch();}catch(e){}
+  try{updateArchiveBtnLabel();}catch(e){}
   try{renderChatList();}catch(e){}
   // داخل المجموعة: العميل لا يستطيع رفع ملفات
   const ab=document.getElementById('msg-attach-btn');
