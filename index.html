@@ -1049,23 +1049,33 @@ function disconnectRealtime(){
   }
 }
 
-// === Performance helpers (debounce لتقليل التحديثات المتكررة) ===
+// === True debounce (يلغي الجدولة السابقة ويعيد جدولة) ===
 let _dbRenderTimer = null;
 function dbRenderChatList(){
-  if(_dbRenderTimer) return; // تم الجدولة بالفعل
+  if(_dbRenderTimer) clearTimeout(_dbRenderTimer);
   _dbRenderTimer = setTimeout(()=>{
     _dbRenderTimer = null;
     try{ renderChatList(); }catch(e){}
-  }, 120);
+  }, 250);
 }
 
 let _dbLoadMsgsTimer = null;
 function dbLoadMessages(){
-  if(_dbLoadMsgsTimer) return;
+  if(_dbLoadMsgsTimer) clearTimeout(_dbLoadMsgsTimer);
   _dbLoadMsgsTimer = setTimeout(()=>{
     _dbLoadMsgsTimer = null;
     try{ loadMessages(); }catch(e){}
-  }, 150);
+  }, 300);
+}
+
+// throttle لـ markAsRead — منع cascade من read_at updates
+let _markReadTimer = null;
+function dbMarkAsRead(){
+  if(_markReadTimer) return;
+  _markReadTimer = setTimeout(()=>{
+    _markReadTimer = null;
+    try{ markAsRead(); }catch(e){}
+  }, 500);
 }
 
 // تحديث محلي لـ chat list caches من رسالة جديدة (بدلاً من fetch)
@@ -1107,8 +1117,12 @@ function _rtMsg(type, rec, oldRec){
       (ct==='group' && rec.group_id===curChat)
     );
     if(inCurrent){
-      dbLoadMessages();
-      if((rec.to_user===me.id || rec.group_id===curChat)) markAsRead();
+      // أضف الرسالة محلياً بدلاً من fetch كامل
+      if(!lastMsgs.find(m=>m.id===rec.id)){
+        lastMsgs = [...lastMsgs, rec];
+        try{ renderMessages(lastMsgs); }catch(e){}
+      }
+      if((rec.to_user===me.id || rec.group_id===curChat)) dbMarkAsRead();
       const sender = allUsers.find(x=>x.id===rec.from_user);
       const grp = rec.group_id ? allGroups.find(g=>g.id===rec.group_id) : null;
       const title = grp ? grp.name : (sender?sender.name:'رسالة جديدة');
@@ -1121,12 +1135,27 @@ function _rtMsg(type, rec, oldRec){
       dbRenderChatList();
     }
   } else if(type === 'UPDATE' && rec){
-    if(curChat && (
-      (ct==='dm' && (rec.from_user===curChat || rec.to_user===curChat)) ||
-      (ct==='group' && rec.group_id===curChat)
-    )) dbLoadMessages();
+    // تجاهل لو في محادثة مختلفة
+    if(!curChat) return;
+    const matches = (ct==='dm' && (rec.from_user===curChat || rec.to_user===curChat)) ||
+                    (ct==='group' && rec.group_id===curChat);
+    if(!matches) return;
+    // حدّث الرسالة محلياً بدون fetch (يلغي الومضة)
+    const idx = lastMsgs.findIndex(m=>m.id===rec.id);
+    if(idx>=0){
+      lastMsgs[idx] = rec;
+      // أعد رسم فقط لو فيه تغيير ظاهر (text أو edited_at) — تجاهل read_at/delivered
+      const oldM = lastMsgs[idx];
+      const visibleChange = (oldRec && (oldRec.text !== rec.text || oldRec.edited_at !== rec.edited_at)) || !oldRec;
+      if(visibleChange) try{ renderMessages(lastMsgs); }catch(e){}
+    }
   } else if(type === 'DELETE'){
-    if(curChat) dbLoadMessages();
+    const id = (oldRec||rec||{}).id;
+    if(id){
+      const before = lastMsgs.length;
+      lastMsgs = lastMsgs.filter(m=>m.id!==id);
+      if(before !== lastMsgs.length) try{ renderMessages(lastMsgs); }catch(e){}
+    }
     dbRenderChatList();
   }
 }
@@ -3371,6 +3400,9 @@ function renderMessages(ms){
   const area=document.getElementById('msgs');
   lastMsgs = ms || [];
   if(!ms||!ms.length){area.innerHTML='<div class="sysmsg">لا توجد رسائل بعد، ابدا المحادثة</div>';return;}
+  // احفظ scroll position قبل إعادة الرسم — لمنع الومضة/القفز
+  const wasAtBottom = (area.scrollHeight - area.scrollTop - area.clientHeight) < 120;
+  const prevScroll = area.scrollTop;
   area.innerHTML=ms.map(m=>{
     const out=m.from_user===me.id;
     const su=allUsers.find(x=>x.id===m.from_user);
@@ -3410,7 +3442,9 @@ function renderMessages(ms){
     const editedLabel = m.edited_at?'<span style="font-size:10px;color:#999;font-style:italic;"> (معدّلة)</span>':'';
     return`<div class="${out?'mo':'mi'}" id="msg-${esc(m.id)}" onmousedown="startLongPress(event,'${esc(m.id)}')" ontouchstart="startLongPress(event,'${esc(m.id)}')" onmouseup="endLongPress()" ontouchend="endLongPress()" onmouseleave="endLongPress()" oncontextmenu="event.preventDefault();openMsgMenu('${esc(m.id)}');return false;">${(!out&&ct==='group'&&su)?`<div class="msnd">${esc(su.name)}</div>`:''}${replyPreview} ${msgContent}<div class="mtm">${t}${editedLabel}${ticks}</div></div>`;
   }).join('');
-  area.scrollTop=area.scrollHeight;
+  // استعد scroll: إذا كنا في الأسفل، انزل لآخر رسالة. غير ذلك، احفظ المكان
+  if(wasAtBottom) area.scrollTop = area.scrollHeight;
+  else area.scrollTop = prevScroll;
 }
 
 // ضغط طويل لفتح قائمة الإجراءات
