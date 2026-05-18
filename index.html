@@ -3338,10 +3338,11 @@ async function sendMsg(){
   else data.group_id=curChat;
   // دعم الرد
   if(replyingTo) data.reply_to_id = replyingTo.id;
-  // optimistic UI — أضف الرسالة محلياً فوراً قبل ما تنجح الشبكة
+  // optimistic UI — أضف الرسالة محلياً فوراً (render واحد فقط)
+  const tmpId = 'tmp-' + Date.now() + '-' + Math.random().toString(36).slice(2,8);
   const optimistic = {
     ...data,
-    id: 'tmp-' + Date.now() + '-' + Math.random().toString(36).slice(2,8),
+    id: tmpId,
     created_at: new Date().toISOString(),
     _pending: true,
   };
@@ -3349,22 +3350,27 @@ async function sendMsg(){
   try{ renderMessages(lastMsgs); }catch(e){}
   _updateChatCacheFromMsg(optimistic);
   dbRenderChatList();
-  // أرسل في الخلفية — لا نحتاج loadMessages لأن realtime سيوصلها لكل الأطراف الأخرى
+  // أرسل في الخلفية — لا renderMessages إضافي (لا ومضة)
   sbPost('messages',data).then((res)=>{
     sendPushNotification(data);
     maybeSendAwayReply(data);
     maybeAutoCreateTicket(data);
-    // استبدل الـ optimistic بالـ real
+    // حدّث الـ id الداخلي فقط (بدون re-render)
     const real = Array.isArray(res)?res[0]:res;
     if(real && real.id){
-      const idx = lastMsgs.findIndex(m=>m.id===optimistic.id);
-      if(idx>=0){ lastMsgs[idx] = real; try{ renderMessages(lastMsgs); }catch(e){} }
+      const idx = lastMsgs.findIndex(m=>m.id===tmpId);
+      if(idx>=0){
+        lastMsgs[idx] = real;
+        // حدّث الـ DOM id فقط دون إعادة رسم
+        const el = document.getElementById('msg-'+tmpId);
+        if(el) el.id = 'msg-' + real.id;
+      }
     }
     if(document.activeElement!==inp) inp.focus();
   }).catch(()=>{
     showToast('خطأ في الإرسال');
     // أزل الـ optimistic لو فشل
-    lastMsgs = lastMsgs.filter(m=>m.id!==optimistic.id);
+    lastMsgs = lastMsgs.filter(m=>m.id!==tmpId);
     try{ renderMessages(lastMsgs); }catch(e){}
   });
   cancelReply();
