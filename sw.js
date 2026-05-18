@@ -1,5 +1,5 @@
 // Service Worker — Network-first for HTML (fresh content), cache-first for assets
-const CACHE = 'tawasul-v4';
+const CACHE = 'tawasul-v6';
 const ASSETS = ['/', '/index.html', '/icon-192.png', '/icon-512.png', '/manifest.json'];
 
 // تثبيت: اعمل cache فوري للأصول الأساسية

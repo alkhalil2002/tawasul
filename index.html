@@ -2538,13 +2538,17 @@ function stopSchedulePoller(){
   if(_schedPoller){ clearInterval(_schedPoller); _schedPoller=null; }
 }
 
+let _processingScheduled = false;
 async function processScheduledMessages(){
   if(!me || !myCompanyId) return;
+  if(_processingScheduled) return; // منع تكرار الـ poller
+  _processingScheduled = true;
   try{
     const now = new Date().toISOString();
+    // حد أقصى 20 رسالة في الدفعة الواحدة (يمنع spam)
     const due = await sbGet('scheduled_messages',
-      _cq(`from_user=eq.${me.id}&sent=eq.false&send_at=lte.${encodeURIComponent(now)}&order=send_at`));
-    if(!Array.isArray(due) || !due.length) return;
+      _cq(`from_user=eq.${me.id}&sent=eq.false&send_at=lte.${encodeURIComponent(now)}&order=send_at&limit=20`));
+    if(!Array.isArray(due) || !due.length){ _processingScheduled = false; return; }
     for(const s of due){
       // علم sent=true أولاً لتفادي race
       const r = await sbPatch('scheduled_messages', _cq(`id=eq.${s.id}&sent=eq.false`), {sent: true});
@@ -2564,6 +2568,7 @@ async function processScheduledMessages(){
       sendPushNotification(data);
     }
   }catch(e){}
+  finally{ _processingScheduled = false; }
 }
 
 // ==============================
@@ -2734,13 +2739,25 @@ function logAction(action, target_type, target_id, details){
 // ==============================
 // AUTO TICKET (إنشاء تذكرة تلقائي عند أول رسالة من العميل + توزيع Round-robin)
 // ==============================
+let _autoTicketInFlight = false;
 async function maybeAutoCreateTicket(sentData){
   try{
     if(!me || me.role!=='client') return;
     if(!sentData || !sentData.to_user) return;
+    if(_autoTicketInFlight) return; // منع race condition
     // هل فيه تذكرة active؟
     const active = getActiveTicketForClient(me.id);
     if(active) return;
+    _autoTicketInFlight = true;
+    // تحقق مرة أخرى من DB (لتفادي race مع بعد realtime delay)
+    try{
+      const fresh = await sbGet('tickets', _cq(`client_id=eq.${me.id}&status=neq.closed&limit=1`));
+      if(Array.isArray(fresh) && fresh.length){
+        if(!allTickets.find(t=>t.id===fresh[0].id)) allTickets.unshift(fresh[0]);
+        _autoTicketInFlight = false;
+        return;
+      }
+    }catch(e){}
     // اختر موظف للتعيين (الموظف اللي أرسل له، إن كان مو client)
     const recipient = allUsers.find(u=>u.id===sentData.to_user);
     let assigned = recipient && recipient.role!=='client' ? recipient.id : null;
@@ -2767,6 +2784,7 @@ async function maybeAutoCreateTicket(sentData){
     const created = Array.isArray(row)?row[0]:row;
     if(created && created.id){ allTickets.unshift(created); }
   }catch(e){}
+  finally{ _autoTicketInFlight = false; }
 }
 
 // ==============================
@@ -3619,8 +3637,24 @@ async function delMsg(mid){
   closeMsgMenu();
   if(!confirm('حذف هذه الرسالة نهائياً؟')) return;
   try{
+    // إذا كانت الرسالة تحوي ملف، احذفه من Storage أولاً (تفادي orphans)
+    const m = lastMsgs.find(x=>x.id===mid);
+    if(m && m.file_url && (m.type==='file' || m.type==='image')){
+      try{
+        const marker = '/storage/v1/object/public/files/';
+        const idx = m.file_url.indexOf(marker);
+        if(idx >= 0){
+          const path = m.file_url.substring(idx + marker.length);
+          await fetch(SUPA_URL+'/storage/v1/object/files/'+path, {
+            method:'DELETE', headers:{'apikey':SUPA_KEY,'Authorization':'Bearer '+SUPA_KEY}
+          });
+        }
+      }catch(e){}
+    }
     await sbDelete('messages',_cq(`id=eq.${mid}`));
-    await loadMessages();
+    // إزالة محلية فورية (بدل refetch)
+    lastMsgs = lastMsgs.filter(x=>x.id!==mid);
+    try{ renderMessages(lastMsgs); }catch(e){}
   }catch(e){showToast('فشل الحذف');}
 }
 
@@ -3689,7 +3723,11 @@ function renderFiles(files,g){
   const canDeleteFiles = me && (me.role === 'admin' || me.role === 'supervisor');
   document.getElementById('fbdy').innerHTML=
     (canUploadFiles?`<div class="upa" onclick="openUploadModal()"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg><div style="margin-top:4px;">رفع ملف في "${cfs}"</div></div>`:'')+
-    (files&&files.length?files.map(f=>`<div class="fitem"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#075E54" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg><div class="finf"><div class="finn">${f.file_name}</div><div class="finm">${f.file_size||''} · ${fmtTime(f.created_at)}</div></div><div style="display:flex;gap:6px;">${f.file_url?`<a href="${f.file_url}" target="_blank" class="abt" download="${f.file_name}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg></a>`:''}${f.file_url?`<a href="${f.file_url}" target="_blank" class="abt" style="text-decoration:none;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg></a>`:''}${canDeleteFiles?`<button class="abt d" onclick="delFile('${f.id}')">${dT}</button>`:''}</div></div>`).join(''):`<div style="text-align:center;color:var(--t3);font-size:13px;padding:20px;">لا توجد ملفات في هذا القسم</div>`);
+    (files&&files.length?files.map(f=>{
+      const sf=escUrl(f.file_url);
+      const sn=esc(f.file_name||'');
+      return `<div class="fitem"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#075E54" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg><div class="finf"><div class="finn">${sn}</div><div class="finm">${esc(String(f.file_size||''))} · ${fmtTime(f.created_at)}</div></div><div style="display:flex;gap:6px;">${sf?`<a href="${sf}" target="_blank" class="abt" download="${sn}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg></a>`:''}${canDeleteFiles?`<button class="abt d" onclick="delFile('${esc(f.id)}')">${dT}</button>`:''}</div></div>`;
+    }).join(''):`<div style="text-align:center;color:var(--t3);font-size:13px;padding:20px;">لا توجد ملفات في هذا القسم</div>`);
 }
 
 async function swFS(s){cfs=s;await loadFiles();}
@@ -4163,7 +4201,6 @@ function isOutsideWorkHoursNow(){
 let editTplId=null, editTplSecs=[];
 
 function openEditTpl(id){
-  console.log('openEditTpl called with id:', id);
   const t=allTemplates.find(x=>x.id===id);
   if(!t){console.error('template not found:', id, allTemplates);return;}
   editTplId=id;
@@ -4910,8 +4947,7 @@ boot();
 if('serviceWorker' in navigator && location.protocol.startsWith('http')){
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('sw.js').then(reg => {
-      console.log('SW registered');
-    }).catch(err => console.log('SW error:', err));
+    }).catch(()=>{});
   });
 }
 </script>
