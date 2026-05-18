@@ -3846,13 +3846,17 @@ function gStep2(){
   if(!selMembers.length){alert('اختر عضوا على الاقل');return;}
   document.getElementById('gs1').style.display='none';
   document.getElementById('gs2').style.display='block';
-  document.getElementById('tlist').innerHTML=allTemplates.map(t=>`
-    <div class="tcard" id="tc-${t.id}" onclick="pickTpl('${t.id}')">
+  // قائمة القوالب + قالب مخصص دائماً كخيار أخير
+  const customTpl = {id:'__custom__', name:'قالب مخصص', sections:[]};
+  const hasCustom = allTemplates.some(t=>t.name==='قالب مخصص');
+  const list = hasCustom ? allTemplates : [...allTemplates, customTpl];
+  document.getElementById('tlist').innerHTML=list.map(t=>`
+    <div class="tcard" id="tc-${esc(t.id)}" onclick="pickTpl('${esc(t.id)}')">
       <div style="display:flex;align-items:center;justify-content:space-between;">
-        <div class="tnm">${t.name}</div>
-        <div class="tchk" id="tck-${t.id}"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div>
+        <div class="tnm">${esc(t.name)}</div>
+        <div class="tchk" id="tck-${esc(t.id)}"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div>
       </div>
-      <div class="tsb">${t.name==='قالب مخصص'?'انشئ اقسامك الخاصة':(t.sections||[]).join(' · ')}</div>
+      <div class="tsb">${t.name==='قالب مخصص'?'انشئ اقسامك الخاصة':esc((t.sections||[]).join(' · '))}</div>
     </div>`).join('');
 }
 function gBack1(){document.getElementById('gs2').style.display='none';document.getElementById('gs1').style.display='block';}
@@ -3865,8 +3869,13 @@ function pickTpl(tid){
 }
 function gStep3(){
   if(!selTpl){alert('اختر قالبا');return;}
-  const t=allTemplates.find(x=>x.id===selTpl);
-  cs=t&&t.name==='قالب مخصص'?['قسم جديد']:[...(t.sections||[])];
+  // دعم الـ "__custom__" الافتراضي إذا الشركة بدون قوالب
+  if(selTpl === '__custom__'){
+    cs = ['قسم جديد'];
+  } else {
+    const t=allTemplates.find(x=>x.id===selTpl);
+    cs = t && t.name==='قالب مخصص' ? ['قسم جديد'] : [...((t&&t.sections)||['قسم جديد'])];
+  }
   document.getElementById('gs2').style.display='none';
   document.getElementById('gs3').style.display='block';
   rSE();
@@ -3884,7 +3893,8 @@ async function createG(){
   btn.disabled=true;btn.textContent='جاري الانشاء...';
   try {
     const members=[me.id,...selMembers];
-    const gr=await sbPost('groups',{company_id:myCompanyId,name,template:selTpl,sections:secs,custom_hours_enabled:false,custom_hours_start:'08:00',custom_hours_end:'17:00',custom_hours_msg:'نحن خارج اوقات العمل',created_by:me.id});
+    const tplToSave = (selTpl === '__custom__') ? null : selTpl;
+    const gr=await sbPost('groups',{company_id:myCompanyId,name,template:tplToSave,sections:secs,custom_hours_enabled:false,custom_hours_start:'08:00',custom_hours_end:'17:00',custom_hours_msg:'نحن خارج اوقات العمل',created_by:me.id});
     if(gr&&gr[0]){
       const gid=gr[0].id;
       for(const uid of members){await sbPost('group_members',{company_id:myCompanyId,group_id:gid,user_id:uid});}
