@@ -2800,11 +2800,16 @@ window.addEventListener('push-token', async (e)=>{
 
 window.addEventListener('push-notification-click', (e)=>{
   try{
-    const data = e.detail;
-    const chatId = data && (data.chat_id || data.group_id || data.from_user);
-    const chatType = (data && data.group_id) ? 'group' : 'dm';
-    if(chatId && typeof openChat === 'function') openChat(chatId, chatType);
-  }catch(err){}
+    const data = e.detail || {};
+    // Edge Function ترسل: { sender_id, chat_id (=to_user للـ DM), group_id }
+    if(data.group_id){
+      if(typeof openG === 'function') openG(data.group_id);
+      return;
+    }
+    // DM: لما الإشعار وصل، sender_id هو اللي بعث (المحادثة معه)
+    const dmId = data.sender_id || data.from_user || data.chat_id;
+    if(dmId && typeof openDM === 'function') openDM(dmId);
+  }catch(err){ console.warn('push click err', err); }
 });
 
 async function clearPushToken(){
