@@ -1038,6 +1038,38 @@ function disconnectRealtime(){
   }
 }
 
+// === Performance helpers (debounce لتقليل التحديثات المتكررة) ===
+let _dbRenderTimer = null;
+function dbRenderChatList(){
+  if(_dbRenderTimer) return; // تم الجدولة بالفعل
+  _dbRenderTimer = setTimeout(()=>{
+    _dbRenderTimer = null;
+    try{ renderChatList(); }catch(e){}
+  }, 120);
+}
+
+let _dbLoadMsgsTimer = null;
+function dbLoadMessages(){
+  if(_dbLoadMsgsTimer) return;
+  _dbLoadMsgsTimer = setTimeout(()=>{
+    _dbLoadMsgsTimer = null;
+    try{ loadMessages(); }catch(e){}
+  }, 150);
+}
+
+// تحديث محلي لـ chat list caches من رسالة جديدة (بدلاً من fetch)
+function _updateChatCacheFromMsg(rec){
+  if(!rec) return;
+  const chatId = rec.group_id || (rec.from_user===me?.id?rec.to_user:rec.from_user);
+  if(!chatId) return;
+  const ts = new Date(rec.created_at||Date.now()).getTime();
+  if(!msgTimeCache[chatId] || ts > msgTimeCache[chatId]){
+    msgTimeCache[chatId] = ts;
+    lastMsgPreview[chatId] = rec.type==='image'?'📷 صورة':rec.type==='file'?'📎 ملف':((rec.text||'').substring(0,60));
+    try{ lastMsgTime[chatId] = fmtTime(rec.created_at); }catch(e){}
+  }
+}
+
 function handleRealtimeChange(table, type, rec, oldRec){
   try{
     if(table === 'messages') return _rtMsg(type, rec, oldRec);
@@ -1053,36 +1085,38 @@ function handleRealtimeChange(table, type, rec, oldRec){
 
 function _rtMsg(type, rec, oldRec){
   if(type === 'INSERT' && rec){
+    // إذا أنا اللي بعثت — لا نعمل refetch (تم محلياً في sendMsg)
+    if(rec.from_user === me.id){
+      _updateChatCacheFromMsg(rec);
+      dbRenderChatList();
+      return;
+    }
     const inCurrent = curChat && (
-      (ct==='dm' && ((rec.from_user===curChat && rec.to_user===me.id)||(rec.from_user===me.id && rec.to_user===curChat))) ||
+      (ct==='dm' && rec.from_user===curChat && rec.to_user===me.id) ||
       (ct==='group' && rec.group_id===curChat)
     );
     if(inCurrent){
-      loadMessages();
-      if((rec.to_user===me.id || rec.group_id===curChat) && rec.from_user!==me.id) markAsRead();
-      if(rec.from_user !== me.id){
-        const sender = allUsers.find(x=>x.id===rec.from_user);
-        const grp = rec.group_id ? allGroups.find(g=>g.id===rec.group_id) : null;
-        const title = grp ? grp.name : (sender?sender.name:'رسالة جديدة');
-        const body = rec.type==='image'?'📷 صورة':rec.type==='file'?'📎 ملف':((rec.text||'').substring(0,60));
-        try{ sendNotif(title, body); }catch(e){}
-      }
+      dbLoadMessages();
+      if((rec.to_user===me.id || rec.group_id===curChat)) markAsRead();
+      const sender = allUsers.find(x=>x.id===rec.from_user);
+      const grp = rec.group_id ? allGroups.find(g=>g.id===rec.group_id) : null;
+      const title = grp ? grp.name : (sender?sender.name:'رسالة جديدة');
+      const body = rec.type==='image'?'📷 صورة':rec.type==='file'?'📎 ملف':((rec.text||'').substring(0,60));
+      try{ sendNotif(title, body); }catch(e){}
     } else {
-      if(rec.from_user !== me.id){
-        const chatId = rec.group_id || (rec.to_user===me.id ? rec.from_user : null);
-        if(chatId) unreadCount[chatId] = (unreadCount[chatId]||0)+1;
-      }
-      loadLastMessages();
-      try{ renderChatList(); }catch(e){}
+      const chatId = rec.group_id || (rec.to_user===me.id ? rec.from_user : null);
+      if(chatId) unreadCount[chatId] = (unreadCount[chatId]||0)+1;
+      _updateChatCacheFromMsg(rec);
+      dbRenderChatList();
     }
   } else if(type === 'UPDATE' && rec){
     if(curChat && (
       (ct==='dm' && (rec.from_user===curChat || rec.to_user===curChat)) ||
       (ct==='group' && rec.group_id===curChat)
-    )) loadMessages();
+    )) dbLoadMessages();
   } else if(type === 'DELETE'){
-    if(curChat) loadMessages();
-    try{ renderChatList(); }catch(e){}
+    if(curChat) dbLoadMessages();
+    dbRenderChatList();
   }
 }
 
@@ -1105,7 +1139,7 @@ function _rtGroup(type, rec, oldRec){
       if(curChat===id){ curChat=null; ct='dm'; showSc('main'); }
     }
   }
-  try{ renderChatList(); }catch(e){}
+  dbRenderChatList();
 }
 
 function _rtGroupMember(type, rec, oldRec){
@@ -1121,7 +1155,7 @@ function _rtGroupMember(type, rec, oldRec){
         if(Array.isArray(rows) && rows[0]){
           rows[0].members = [me.id];
           allGroups.push(rows[0]);
-          renderChatList();
+          dbRenderChatList();
         }
       }).catch(()=>{});
       return;
@@ -1135,7 +1169,7 @@ function _rtGroupMember(type, rec, oldRec){
       }
     }
   }
-  try{ renderChatList(); }catch(e){}
+  dbRenderChatList();
 }
 
 function _rtTicket(type, rec, oldRec){
@@ -1148,7 +1182,7 @@ function _rtTicket(type, rec, oldRec){
     const id = (oldRec||rec||{}).id;
     if(id) allTickets = allTickets.filter(t=>t.id!==id);
   }
-  try{ renderChatList(); }catch(e){}
+  dbRenderChatList();
 }
 
 function _rtUser(type, rec, oldRec){
@@ -1167,7 +1201,7 @@ function _rtUser(type, rec, oldRec){
     const id = (oldRec||rec||{}).id;
     if(id) allUsers = allUsers.filter(u=>u.id!==id);
   }
-  try{ renderChatList(); }catch(e){}
+  dbRenderChatList();
 }
 
 function _rtCanned(type, rec, oldRec){
@@ -1193,7 +1227,7 @@ function _rtArchive(type, rec, oldRec){
     const id = (oldRec||rec||{}).id;
     if(id) myArchives = myArchives.filter(a=>a.id!==id);
   }
-  try{ renderChatList(); }catch(e){}
+  dbRenderChatList();
 }
 
 function _rtCompany(type, rec, oldRec){
@@ -3304,15 +3338,35 @@ async function sendMsg(){
   else data.group_id=curChat;
   // دعم الرد
   if(replyingTo) data.reply_to_id = replyingTo.id;
-  // أرسل في الخلفية بدون await — يحافظ على الـ focus
-  sbPost('messages',data).then(()=>{
+  // optimistic UI — أضف الرسالة محلياً فوراً قبل ما تنجح الشبكة
+  const optimistic = {
+    ...data,
+    id: 'tmp-' + Date.now() + '-' + Math.random().toString(36).slice(2,8),
+    created_at: new Date().toISOString(),
+    _pending: true,
+  };
+  lastMsgs = [...(lastMsgs||[]), optimistic];
+  try{ renderMessages(lastMsgs); }catch(e){}
+  _updateChatCacheFromMsg(optimistic);
+  dbRenderChatList();
+  // أرسل في الخلفية — لا نحتاج loadMessages لأن realtime سيوصلها لكل الأطراف الأخرى
+  sbPost('messages',data).then((res)=>{
     sendPushNotification(data);
     maybeSendAwayReply(data);
     maybeAutoCreateTicket(data);
-    loadMessages().then(()=>{
-      if(document.activeElement!==inp) inp.focus();
-    });
-  }).catch(()=>{ showToast('خطأ في الإرسال'); });
+    // استبدل الـ optimistic بالـ real
+    const real = Array.isArray(res)?res[0]:res;
+    if(real && real.id){
+      const idx = lastMsgs.findIndex(m=>m.id===optimistic.id);
+      if(idx>=0){ lastMsgs[idx] = real; try{ renderMessages(lastMsgs); }catch(e){} }
+    }
+    if(document.activeElement!==inp) inp.focus();
+  }).catch(()=>{
+    showToast('خطأ في الإرسال');
+    // أزل الـ optimistic لو فشل
+    lastMsgs = lastMsgs.filter(m=>m.id!==optimistic.id);
+    try{ renderMessages(lastMsgs); }catch(e){}
+  });
   cancelReply();
 }
 
